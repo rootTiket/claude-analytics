@@ -160,7 +160,7 @@ export function getSessionsList(
                 }
             }
 
-            let inputTokens = 0, outputTokens = 0, cacheRead = 0, requests = 0;
+            let inputTokens = 0, cacheRead = 0, requests = 0;
             const filesReadList: string[] = [];
             const filesEdited: string[] = [];
             const specFilesRead: string[] = [];
@@ -175,24 +175,25 @@ export function getSessionsList(
                 if (record.type === 'assistant' && record.message?.usage) {
                     const usage = record.message.usage;
                     inputTokens += usage.input_tokens || 0;
-                    outputTokens += usage.output_tokens || 0;
+                    // outputTokens += usage.output_tokens || 0;
                     cacheRead += usage.cache_read_input_tokens || 0;
                     requests++;
 
-                    if (record.message?.content) {
+                    if (record.message?.content && Array.isArray(record.message.content)) {
                         for (const block of record.message.content) {
-                            if ((block as any).type === 'tool_use') {
-                                const toolName = (block as any).name?.toLowerCase() || '';
+                            if (block.type === 'tool_use') {
+                                const toolName = block.name?.toLowerCase() || '';
                                 if (toolName.includes('read') || toolName.includes('view') || toolName.includes('grep') || toolName.includes('glob') || toolName.includes('list')) {
                                     readCount++;
-                                    const input = (block as any).input || {};
-                                    const fp = input.file_path || input.path || '';
+                                    const input = (block.input as Record<string, unknown>) || {};
+                                    const fp = (input.file_path as string) || (input.path as string) || '';
                                     if (firstSpecReadIndex === -1 && (fp.includes('.claude/') || fp.includes('CLAUDE.md'))) {
                                         firstSpecReadIndex = recordIndex;
                                     }
                                 } else if (toolName.includes('edit') || toolName.includes('write') || toolName.includes('replace')) {
                                     editCount++;
-                                    const filePath = (block as any).input?.file_path || (block as any).input?.filePath;
+                                    const input = block.input as Record<string, unknown> | undefined;
+                                    const filePath = (input?.file_path as string) || (input?.filePath as string);
                                     if (filePath) filesEdited.push(filePath);
                                 }
                             }
@@ -200,11 +201,11 @@ export function getSessionsList(
                     }
                 }
 
-                if (record.type === 'user' && (record as any).message?.content) {
-                    const msgContent = (record as any).message.content;
+                if (record.type === 'user' && record.message?.content) {
+                    const msgContent = record.message.content;
                     if (Array.isArray(msgContent)) {
                         for (const block of msgContent) {
-                            if (block?.type === 'tool_result') {
+                            if (block.type === 'tool_result') {
                                 toolResultCount++;
                                 if (block.is_error) {
                                     toolErrorCount++;
@@ -223,10 +224,11 @@ export function getSessionsList(
                 }
 
                 // Human vs auto turn detection
+                // Human vs auto turn detection
                 if (record.type === 'user') {
-                    const hasTUR = !!(record as any).toolUseResult;
-                    const isMeta = !!(record as any).isMeta;
-                    const msgContent = (record as any).message?.content;
+                    const hasTUR = !!record.toolUseResult;
+                    const isMeta = !!record.isMeta;
+                    const msgContent = record.message?.content;
 
                     if (hasTUR) {
                         autoTurns++;
@@ -235,8 +237,8 @@ export function getSessionsList(
                     } else if (typeof msgContent === 'string' && msgContent.trim().length > 0) {
                         humanTurns++;
                     } else if (Array.isArray(msgContent)) {
-                        const hasText = msgContent.some((b: any) => b.type === 'text' && b.text?.trim().length > 0);
-                        const hasOnlyToolResults = msgContent.every((b: any) => b.type === 'tool_result');
+                        const hasText = msgContent.some(b => b.type === 'text' && b.text?.trim().length);
+                        const hasOnlyToolResults = msgContent.every(b => b.type === 'tool_result');
                         if (hasOnlyToolResults) autoTurns++;
                         else if (hasText) humanTurns++;
                     }
@@ -246,7 +248,7 @@ export function getSessionsList(
             }
 
             // Compute derived metrics
-            const lastRecordRaw = records[records.length - 1] as any;
+            const lastRecordRaw = records[records.length - 1];
             const sessionExit: 'clean' | 'forced' | 'unknown' =
                 lastRecordRaw?.type === 'summary' ? 'clean' :
                     lastRecordRaw?.type === 'system' ? 'forced' : 'unknown';
@@ -294,13 +296,13 @@ export function getSessionsList(
                 project: project.name,
                 start_time: startTs,
                 end_time: endTs,
-                git_branch: (firstTimestampRecord as any)?.gitBranch || '',
+                git_branch: firstTimestampRecord?.gitBranch || '',
                 total_requests: requests,
                 avg_context_size: avgContextSize,
                 danger_level: dangerLevel,
                 limit_impact: limitImpact,
                 total_context_tokens: totalContextSent,
-                total_output_tokens: outputTokens,
+                total_output_tokens: 0,
                 duplicate_read_rate: duplicateReadRate,
                 read_edit_ratio: readEditRatio,
                 repeated_edit_rate: repeatedEditRate,
@@ -368,7 +370,7 @@ export function getSessionDetail(
     const filesRead: string[] = [];
     const specFilesRead: string[] = [];
 
-    let inputTokens = 0, outputTokens = 0, cacheRead = 0, requests = 0;
+    let inputTokens = 0, cacheRead = 0, requests = 0;
     let readCount = 0, editCount = 0;
     let toolResultCount = 0, toolErrorCount = 0;
     const filesEdited: string[] = [];
@@ -389,10 +391,10 @@ export function getSessionDetail(
 
     for (const record of records) {
         if (record.type === 'user') {
-            if ((record as any).isMeta) continue;
+            if (record.isMeta) continue;
 
-            const hasTUR = !!(record as any).toolUseResult;
-            const msgContent = (record as any).message?.content;
+            const hasTUR = !!record.toolUseResult;
+            const msgContent = record.message?.content;
 
             let content = '';
             let messageSubtype: ProcessedMessage['subtype'] = '';
@@ -428,7 +430,7 @@ export function getSessionDetail(
             const toolUses: ToolUseDetail[] = [];
 
             if (hasTUR) {
-                const tur = (record as any).toolUseResult;
+                const tur = record.toolUseResult;
                 if (tur?.file?.filePath) {
                     const fp = tur.file.filePath;
 
@@ -457,11 +459,11 @@ export function getSessionDetail(
                             toolErrorCount++;
                             if (firstSpecReadIndex !== -1 && recordIndex > firstSpecReadIndex) postSpecReadErrors++;
 
-                            const toolId = block.tool_use_id;
+                            const toolId = block.tool_use_id!;
                             const toolName = toolIdMap.get(toolId) || 'unknown';
                             let errorMsg = '';
                             if (typeof block.content === 'string') errorMsg = block.content;
-                            else if (Array.isArray(block.content)) errorMsg = block.content.map((c: any) => c.text || '').join(' ');
+                            else if (Array.isArray(block.content)) errorMsg = block.content.map(c => c.text || '').join(' ');
 
                             if (errorMsg) {
                                 const displayMsg = errorMsg.length > 200 ? errorMsg.substring(0, 200) + '...' : errorMsg;
@@ -498,21 +500,21 @@ export function getSessionDetail(
             // Reset assistant read files tracking for this message
             lastAssistantReadFiles = new Set();
 
-            if (record.message?.content) {
+            if (record.message?.content && Array.isArray(record.message.content)) {
                 for (const block of record.message.content) {
                     if (block.type === 'text' && block.text) {
                         content.push(block.text);
                     } else if (block.type === 'tool_use') {
-                        const toolName = (block as any).name || 'tool';
-                        const input = (block as any).input || {};
-                        const toolId = (block as any).id;
+                        const toolName = block.name || 'tool';
+                        const input = (block.input as Record<string, unknown>) || {};
+                        const toolId = block.id;
                         if (toolId) toolIdMap.set(toolId, toolName);
 
                         let detail = '';
 
                         const nameLower = toolName.toLowerCase();
                         if (nameLower === 'read' || nameLower === 'view') {
-                            const fp = input.file_path || input.filePath || '';
+                            const fp = (input.file_path as string) || (input.filePath as string) || '';
                             if (fp) {
                                 detail = fp;
                                 // Track that this file was read by assistant tool
@@ -534,29 +536,29 @@ export function getSessionDetail(
                                 }
                             }
                         } else if (nameLower === 'edit' || nameLower === 'replace') {
-                            detail = input.file_path || input.filePath || '';
+                            detail = (input.file_path as string) || (input.filePath as string) || '';
                             editCount++;
                             if (detail) filesEdited.push(detail);
                         } else if (nameLower === 'write') {
-                            detail = input.file_path || input.filePath || '';
+                            detail = (input.file_path as string) || (input.filePath as string) || '';
                             editCount++;
                             if (detail) filesEdited.push(detail);
                         } else if (nameLower === 'bash') {
-                            detail = input.command || '';
+                            detail = (input.command as string) || '';
                         } else if (nameLower === 'grep') {
-                            detail = `${input.pattern || ''} in ${input.path || ''}`;
+                            detail = `${(input.pattern as string) || ''} in ${(input.path as string) || ''}`;
                         } else if (nameLower === 'glob') {
-                            detail = `${input.pattern || ''} in ${input.path || ''}`;
+                            detail = `${(input.pattern as string) || ''} in ${(input.path as string) || ''}`;
                         } else if (nameLower === 'task') {
-                            detail = input.description || '';
+                            detail = (input.description as string) || '';
                         } else if (nameLower === 'taskcreate') {
-                            detail = input.subject || '';
+                            detail = (input.subject as string) || '';
                         } else if (nameLower === 'taskupdate') {
                             detail = `#${input.taskId || ''} → ${input.status || ''}`;
                         } else if (nameLower === 'tasklist') {
                             detail = '';
                         } else {
-                            detail = input.file_path || input.filePath || input.command || input.description || '';
+                            detail = (input.file_path as string) || (input.filePath as string) || (input.command as string) || (input.description as string) || '';
                             if (nameLower.includes('read') || nameLower.includes('view') || nameLower.includes('grep') || nameLower.includes('glob') || nameLower.includes('list')) {
                                 readCount++;
                                 if (detail) {
@@ -579,7 +581,7 @@ export function getSessionDetail(
 
             if (usage) {
                 inputTokens += usage.input_tokens || 0;
-                outputTokens += usage.output_tokens || 0;
+                // outputTokens += usage.output_tokens || 0; // Unused
                 cacheRead += usage.cache_read_input_tokens || 0;
                 requests++;
             }
@@ -649,7 +651,7 @@ export function getSessionDetail(
         project: foundProject,
         start_time: (firstRecord as Message).timestamp || '',
         end_time: (lastRecord as Message).timestamp || '',
-        git_branch: (firstRecord as any).gitBranch || '',
+        git_branch: (firstRecord as Message)?.gitBranch || '',
         messages,
         summary: {
             total_requests: requests,

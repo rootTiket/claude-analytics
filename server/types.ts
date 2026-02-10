@@ -12,12 +12,25 @@ export interface Message {
     timestamp?: string;
     message?: {
         usage?: UsageData;
-        content?: Array<{ type: string; text?: string }>;
+        content?: ContentBlock[] | string;
     };
     toolUseResult?: {
         file?: { filePath: string };
     };
-    content?: Array<{ type: string; text?: string; tool_use_id?: string }>;
+    isMeta?: boolean;
+    gitBranch?: string;
+    content?: ContentBlock[] | string;
+}
+
+export interface ContentBlock {
+    type: string;
+    text?: string;
+    name?: string;
+    id?: string;
+    input?: Record<string, unknown>;
+    tool_use_id?: string;
+    content?: string | ContentBlock[];
+    is_error?: boolean;
 }
 
 export interface ToolUseDetail {

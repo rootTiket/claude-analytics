@@ -42,7 +42,7 @@ export default function SessionDetail() {
     const toggleExpanded = (msgId: number) => {
         setExpandedMessages(prev => {
             const next = new Set(prev)
-            next.has(msgId) ? next.delete(msgId) : next.add(msgId)
+            if (next.has(msgId)) next.delete(msgId); else next.add(msgId);
             return next
         })
     }
@@ -212,7 +212,7 @@ export default function SessionDetail() {
                                         } opacity={0.85} />
                                     ))}
                                 </Bar>
-                                <Tooltip formatter={(value: any) => [`${value}K`, '누적 컨텍스트']}
+                                <Tooltip formatter={(value?: number) => [`${value}K`, '누적 컨텍스트']}
                                     contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 4px 12px rgba(32,33,36,0.1)', fontSize: 13 }} />
                             </BarChart>
                         </ResponsiveContainer>

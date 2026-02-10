@@ -197,7 +197,7 @@ export default function Dashboard() {
                                     paddingAngle={3} strokeWidth={0}>
                                     {healthData.map((_e, i) => <Cell key={i} fill={HEALTH_COLORS[i % HEALTH_COLORS.length]} />)}
                                 </Pie>
-                                <Tooltip formatter={(value: any) => [`${value}개`, '']}
+                                <Tooltip formatter={(value?: number) => [`${value}개`, '']}
                                     contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 4px 12px rgba(32,33,36,0.1)', fontSize: 13 }} />
                             </PieChart>
                         </ResponsiveContainer>
@@ -223,7 +223,7 @@ export default function Dashboard() {
                                 <Bar dataKey="value" radius={[8, 8, 0, 0]}>
                                     {gradeData.map((d, i) => <Cell key={i} fill={d.fill} />)}
                                 </Bar>
-                                <Tooltip formatter={(value: any) => [`${value}개`, '']}
+                                <Tooltip formatter={(value?: number) => [`${value}개`, '']}
                                     contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 4px 12px rgba(32,33,36,0.1)', fontSize: 13 }} />
                             </BarChart>
                         </ResponsiveContainer>
@@ -239,7 +239,7 @@ export default function Dashboard() {
                                 <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#9aa0a6' }} axisLine={false} tickLine={false} angle={-30} textAnchor="end" height={40} />
                                 <YAxis hide />
                                 <Bar dataKey="ctx" fill="#1a73e8" radius={[4, 4, 0, 0]} opacity={0.85} />
-                                <Tooltip formatter={(value: any) => [`${value}K`, '평균 컨텍스트']}
+                                <Tooltip formatter={(value?: number) => [`${value}K`, '평균 컨텍스트']}
                                     contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 4px 12px rgba(32,33,36,0.1)', fontSize: 13 }} />
                             </BarChart>
                         </ResponsiveContainer>

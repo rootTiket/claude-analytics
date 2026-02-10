@@ -1,0 +1,18 @@
+# Source files (only dist/ is needed)
+src/
+server/
+public/
+
+# Config files
+*.ts
+!*.d.ts
+tsconfig*.json
+vite.config.ts
+eslint.config.js
+index.html
+
+# Dev files
+.gitignore
+.vscode/
+.idea/
+*.log
