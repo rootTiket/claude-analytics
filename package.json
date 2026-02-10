@@ -1,0 +1,77 @@
+{
+  "name": "claude-analytics",
+  "version": "1.0.0",
+  "description": "Claude CLI Analytics Dashboard - Efficiency insights for Claude Pro users",
+  "keywords": [
+    "claude",
+    "analytics",
+    "dashboard",
+    "cli",
+    "token-usage",
+    "claude-cli",
+    "tool-use",
+    "visualization"
+  ],
+  "homepage": "https://github.com/igeunpyo/claude-analytics#readme",
+  "bugs": {
+    "url": "https://github.com/igeunpyo/claude-analytics/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/igeunpyo/claude-analytics.git"
+  },
+  "license": "MIT",
+  "author": "GeunPyo Lee <igeunpyo@gmail.com>",
+  "main": "dist/server/index.js",
+  "type": "module",
+  "bin": {
+    "claude-analytics": "./bin/cli.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:client": "vite",
+    "dev:server": "npx tsx watch server/index.ts",
+    "build": "tsc -b && vite build && tsc -p tsconfig.server.json",
+    "preview": "vite preview",
+    "start": "node dist/server/index.js",
+    "lint": "eslint .",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^7.13.0",
+    "recharts": "^3.7.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@tailwindcss/vite": "^4.1.18",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.5.0",
+    "tailwindcss": "^4.1.18",
+    "tsx": "^4.21.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.48.0",
+    "vite": "^7.3.1"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
