@@ -158,7 +158,7 @@ export interface SessionDetail {
 
 export interface AppConfig {
     claude_projects_dir: string;
-    initialized: boolean;
+    initialized?: boolean;
 }
 
 export interface HypothesisCheck {

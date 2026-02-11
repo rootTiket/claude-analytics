@@ -1,4 +1,4 @@
-# Claude Analytics Dashboard
+# Claude CLI Analytics Dashboard
 
 Claude CLI 대화 로그를 분석하여 토큰 효율성, 캐시 활용률, 컨텍스트 사용 패턴을 시각화하는 대시보드
 
@@ -8,6 +8,7 @@ Claude CLI 대화 로그를 분석하여 토큰 효율성, 캐시 활용률, 컨
 - 📝 **Session Detail**: 세션별 대화 타임라인, 질문별 읽은 컨텍스트 로그
 - 🔄 **Real-time Refresh**: 새로고침 버튼으로 최신 데이터 로드
 - 🏆 **Engineering Grade**: S/A/B/C 등급 + SEI (Spec Efficiency Index) 분석
+- 🔍 **Auto-detection**: `.claude/projects` 경로 자동 탐색 — init 불필요
 - 📦 **NPM 패키지**: `npm install -g`로 어디서든 설치 가능
 
 ## 🚀 설치 및 실행
@@ -16,16 +17,16 @@ Claude CLI 대화 로그를 분석하여 토큰 효율성, 캐시 활용률, 컨
 
 ```bash
 # 글로벌 설치
-npm install -g claude-analytics
+npm install -g claude-cli-analytics
 
-# 실행
-claude-analytics
+# 실행 (자동으로 ~/.claude/projects 탐색)
+claude-cli-analytics
 ```
 
 ### 📦 npx (설치 없이 실행)
 
 ```bash
-npx claude-analytics
+npx claude-cli-analytics
 ```
 
 ### 🛠️ 소스에서 빌드 (기여용)
@@ -36,6 +37,10 @@ cd claude-analytics
 npm install
 npm run build
 npm start
+
+# 또는 글로벌로 링크하여 사용
+npm link
+claude-cli-analytics
 ```
 
 ### ⚡ 개발 모드
@@ -52,13 +57,36 @@ npm run dev
 - Node.js 18+ (권장: 20+)
 - npm 9+
 
-## ⚙️ 설정
+## 🔍 .claude 경로 자동 탐색
 
-기본적으로 `~/.claude/projects` 디렉토리에서 세션 데이터를 읽습니다.
-커스텀 경로를 사용하려면:
+**별도의 `init` 과정이 필요 없습니다.** 서버 시작 시 자동으로 Claude Code의 데이터 디렉토리를 탐색합니다.
+
+Claude Code는 설치 방법에 관계없이 항상 `~/.claude/projects`에 세션 데이터를 저장합니다:
+
+| 설치 방법 | 데이터 경로 |
+|----------|-----------|
+| `brew install --cask claude-code` | `~/.claude/projects` |
+| `npm install -g @anthropic-ai/claude-code` | `~/.claude/projects` |
+| 직접 다운로드 | `~/.claude/projects` |
+
+### 경로 탐색 우선순위
+
+1. `CLAUDE_PROJECTS_DIR` 환경변수 (최우선)
+2. 저장된 설정 파일 (`~/.claude-analytics/config.json`)
+3. 자동 탐색 (`~/.claude/projects`, `$XDG_CONFIG_HOME/claude/projects`)
+4. 기본 경로 (`~/.claude/projects`)
+
+### 커스텀 경로 사용
 
 ```bash
-CLAUDE_PROJECTS_DIR=/path/to/claude/projects claude-analytics
+# 환경변수로 지정
+CLAUDE_PROJECTS_DIR=/path/to/claude/projects claude-cli-analytics
+
+# CLI 옵션으로 지정
+claude-cli-analytics --path /path/to/claude/projects
+
+# 포트 변경
+claude-cli-analytics --port 8080
 ```
 
 ## 📈 분석 지표
@@ -111,13 +139,14 @@ SEI = (Accuracy × 100) / log₁₀(Spec Volume + 1)
 | `GET /api/sessions` | 세션 목록 (SEI + Grade 포함) |
 | `GET /api/sessions/:id` | 세션 상세 (메시지, 토큰, 파일) |
 | `GET /api/projects` | 프로젝트 목록 |
+| `GET /api/config` | 현재 설정 + 자동 탐색 결과 |
 | `GET /api/health` | 서버 상태 확인 |
 | `POST /api/refresh` | 데이터 새로고침 |
 
 ## 📁 Project Structure
 
 ```
-claude-analytics/
+claude-cli-analytics/
 ├── src/                      # React Frontend
 │   ├── pages/
 │   │   ├── Dashboard.tsx     # 메인 대시보드
@@ -125,9 +154,13 @@ claude-analytics/
 │   ├── App.tsx               # 라우팅
 │   └── index.css             # Tailwind CSS
 ├── server/
-│   └── index.ts              # Express API 서버
+│   ├── index.ts              # Express API 서버
+│   ├── config.ts             # 설정 + 자동 탐색
+│   ├── analyzer.ts           # 세션 분석 로직
+│   ├── parser.ts             # JSONL 파서
+│   └── types.ts              # 타입 정의
 ├── bin/
-│   └── cli.js                # CLI 진입점
+│   └── cli.js                # CLI 진입점 (--port, --path, --help)
 ├── dist/
 │   ├── client/               # 빌드된 프론트엔드
 │   └── server/               # 빌드된 백엔드

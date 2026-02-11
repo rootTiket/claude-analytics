@@ -33,7 +33,17 @@ function getProjectsDir(): string {
 app.get('/api/config', (_req, res) => {
     const config = loadConfig();
     const detected = autoDetectProjectsDir();
-    res.json({ ...config, detected_path: detected.path, detected: detected.found });
+    const resolvedPath = resolveProjectsDir();
+    const validation = validateProjectsDir(resolvedPath);
+    res.json({
+        ...config,
+        detected_path: detected.path,
+        detected: detected.found,
+        resolved_path: resolvedPath,
+        auto_detected: detected.found && !config.initialized,
+        ready: validation.valid,
+        projectCount: validation.projectCount
+    });
 });
 
 app.post('/api/config', (req, res) => {
@@ -121,13 +131,27 @@ if (fs.existsSync(distPath)) {
 
 const server = app.listen(PORT, () => {
     const url = `http://localhost:${PORT}`;
-    console.log(`\n  Claude Analytics Dashboard`);
+    console.log(`\n  🔍 Claude Analytics Dashboard`);
     console.log(`  ${url}\n`);
 
     const projectsDir = getProjectsDir();
-    console.log(`  Projects: ${projectsDir}`);
-    const projects = getProjectsList(projectsDir);
-    console.log(`  Found ${projects.length} projects\n`);
+    const detected = autoDetectProjectsDir();
+
+    if (detected.found) {
+        console.log(`  ✅ Auto-detected: ${projectsDir}`);
+    } else if (process.env.CLAUDE_PROJECTS_DIR) {
+        console.log(`  📁 Using env var: ${projectsDir}`);
+    } else {
+        console.log(`  ⚠️  Projects dir not found: ${projectsDir}`);
+        console.log(`     Set CLAUDE_PROJECTS_DIR or install Claude Code first.`);
+    }
+
+    try {
+        const projects = getProjectsList(projectsDir);
+        console.log(`  📊 Found ${projects.length} projects\n`);
+    } catch {
+        console.log(`  📊 No projects found yet\n`);
+    }
 
     const openCmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
     exec(`${openCmd} ${url}`, (err) => {
