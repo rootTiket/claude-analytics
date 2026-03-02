@@ -1,6 +1,6 @@
 {
   "name": "claude-cli-analytics",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "description": "Claude CLI Analytics Dashboard - Efficiency insights for Claude Pro users",
   "keywords": [
     "claude",
@@ -25,7 +25,7 @@
   "main": "dist/server/index.js",
   "type": "module",
   "bin": {
-    "claude-cli-analytics": "./bin/cli.js"
+    "claude-cli-analytics": "./bin/cli.cjs"
   },
   "files": [
     "dist",
