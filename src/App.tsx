@@ -4,13 +4,11 @@ import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
 import SessionDetail from './pages/SessionDetail'
 import Setup from './pages/Setup'
-import FloatingParticles from './components/FloatingParticles'
 
 function App() {
   return (
     <Router>
       <div className="app">
-        <FloatingParticles />
         <Routes>
           {/* Setup page — full screen, no header */}
           <Route path="/setup" element={<Setup />} />
