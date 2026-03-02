@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import type {
     Message, SessionSummary, SessionDetail, ProcessedMessage,
-    ToolUseDetail, AnalyticsResponse
+    ToolUseDetail, AnalyticsResponse, AnthropicMetrics
 } from './types.js';
 import { parseJsonlFile, getProjectsList } from './parser.js';
 
@@ -169,7 +169,7 @@ export function getSessionsList(
             let postSpecReadTotal = 0, postSpecReadErrors = 0;
             let recordIndex = 0;
             let toolResultCount = 0, toolErrorCount = 0;
-            let humanTurns = 0, autoTurns = 0;
+            let humanTurns = 0, autoTurns = 0, commandTurns = 0;
 
             for (const record of records) {
                 if (record.type === 'assistant' && record.message?.usage) {
@@ -223,8 +223,7 @@ export function getSessionsList(
                     if (fp.includes('.claude/') || fp.includes('CLAUDE.md')) specFilesRead.push(fp);
                 }
 
-                // Human vs auto turn detection
-                // Human vs auto turn detection
+                // Human vs auto vs command turn detection
                 if (record.type === 'user') {
                     const hasTUR = !!record.toolUseResult;
                     const isMeta = !!record.isMeta;
@@ -235,12 +234,24 @@ export function getSessionsList(
                     } else if (isMeta) {
                         // skip
                     } else if (typeof msgContent === 'string' && msgContent.trim().length > 0) {
-                        humanTurns++;
+                        const raw = msgContent.trim();
+                        // Slash commands (/feature, /init, etc.) are skill triggers, not user interventions
+                        if (raw.includes('<command-name>') || raw.startsWith('This session is being continued')) {
+                            commandTurns++;
+                        } else if (raw.startsWith('<local-command-stdout>') || raw.startsWith('<local-command-caveat>')) {
+                            autoTurns++;
+                        } else {
+                            humanTurns++;
+                        }
                     } else if (Array.isArray(msgContent)) {
-                        const hasText = msgContent.some(b => b.type === 'text' && b.text?.trim().length);
-                        const hasOnlyToolResults = msgContent.every(b => b.type === 'tool_result');
-                        if (hasOnlyToolResults) autoTurns++;
-                        else if (hasText) humanTurns++;
+                        const hasToolResults = msgContent.some(b => b.type === 'tool_result');
+                        // Tool results (even with contextual text) are automatic, not user interventions
+                        if (hasToolResults) {
+                            autoTurns++;
+                        } else {
+                            const hasText = msgContent.some(b => b.type === 'text' && b.text?.trim().length);
+                            if (hasText) humanTurns++;
+                        }
                     }
                 }
 
@@ -291,6 +302,49 @@ export function getSessionsList(
 
             const specCount = new Set(specFilesRead).size;
 
+            const specTriggerRate = specCount > 0 ? 100 : 0;
+            // Command turns are skill triggers (automatic), include them in auto side for autonomy calculation
+            const effectiveAutoTurns = autoTurns + commandTurns;
+            const autonomyRate = (effectiveAutoTurns + humanTurns) > 0
+                ? Math.round((effectiveAutoTurns / (effectiveAutoTurns + humanTurns)) * 1000) / 10 : 0;
+            const totalToolCalls = readCount + editCount;
+
+            const anthropicMetrics: AnthropicMetrics = {
+                skill_trigger: {
+                    cache_hit_rate: Math.round(cacheHitRate * 10) / 10,
+                    spec_trigger_rate: specTriggerRate,
+                    danger_level: dangerLevel,
+                    limit_impact: limitImpact,
+                },
+                tool_efficiency: {
+                    read_edit_ratio: readEditRatio,
+                    tokens_per_edit: tokensPerEdit,
+                    duplicate_read_rate: duplicateReadRate,
+                    repeated_edit_rate: repeatedEditRate,
+                    total_tool_calls: totalToolCalls,
+                },
+                api_reliability: {
+                    tool_error_rate: toolErrorRate,
+                    tool_error_count: toolErrorCount,
+                    session_exit: sessionExit,
+                },
+                user_intervention: {
+                    human_turns: humanTurns,
+                    auto_turns: effectiveAutoTurns,
+                    autonomy_rate: autonomyRate,
+                    ht_per_edit: editCount > 0 ? Math.round((humanTurns / editCount) * 10) / 10 : 0,
+                },
+                workflow_autonomy: {
+                    repeated_edit_rate: repeatedEditRate,
+                    efficiency_score: efficiencyScore,
+                    sei,
+                },
+                session_consistency: {
+                    grade: grade.letter,
+                    grade_breakdown: grade.breakdown,
+                },
+            };
+
             sessions.push({
                 session_id: file.replace('.jsonl', ''),
                 project: project.name,
@@ -315,10 +369,12 @@ export function getSessionsList(
                 spec_files_count: specCount,
                 has_spec_context: specCount > 0,
                 human_turns: humanTurns,
-                auto_turns: autoTurns,
+                auto_turns: effectiveAutoTurns,
+                command_turns: commandTurns,
                 human_turns_per_edit: editCount > 0 ? Math.round((humanTurns / editCount) * 10) / 10 : 0,
                 spec_efficiency: sei,
-                grade_breakdown: grade.breakdown
+                grade_breakdown: grade.breakdown,
+                anthropic_metrics: anthropicMetrics,
             });
         }
     }
@@ -382,6 +438,8 @@ export function getSessionDetail(
 
     const toolIdMap = new Map<string, string>();
     const errorMap = new Map<string, { tool: string; error: string; count: number }>();
+    // Track pending questions from interactive tools (AskFollowupQuestion etc.)
+    const pendingQuestions = new Map<string, ToolUseDetail>();
 
     // Track which files were read by the assistant via tool_use
     // so we can deduplicate them from user's "context load" display
@@ -455,6 +513,18 @@ export function getSessionDetail(
                 for (const block of msgContent) {
                     if (block?.type === 'tool_result') {
                         toolResultCount++;
+
+                        // Link answer back to pending interactive tool question
+                        const resultToolId = block.tool_use_id;
+                        if (resultToolId && pendingQuestions.has(resultToolId)) {
+                            let answerText = '';
+                            if (typeof block.content === 'string') answerText = block.content;
+                            else if (Array.isArray(block.content)) answerText = block.content.map(c => c.text || '').join(' ');
+                            const pending = pendingQuestions.get(resultToolId)!;
+                            pending.answer = answerText || undefined;
+                            pendingQuestions.delete(resultToolId);
+                        }
+
                         if (block.is_error) {
                             toolErrorCount++;
                             if (firstSpecReadIndex !== -1 && recordIndex > firstSpecReadIndex) postSpecReadErrors++;
@@ -557,6 +627,31 @@ export function getSessionDetail(
                             detail = `#${input.taskId || ''} → ${input.status || ''}`;
                         } else if (nameLower === 'tasklist') {
                             detail = '';
+                        } else if (nameLower.includes('ask') || nameLower.includes('question') || nameLower.includes('followup') || nameLower === 'attempt_completion') {
+                            // Interactive tools: capture the question/message
+                            // AskUserQuestion format: input.questions[{question, header, options[{label, description}]}]
+                            let question = '';
+                            const questions = input.questions as Array<{ question?: string; header?: string; options?: Array<{ label?: string; description?: string }> }> | undefined;
+                            if (Array.isArray(questions) && questions.length > 0) {
+                                const parts: string[] = [];
+                                for (const q of questions) {
+                                    let qText = '';
+                                    if (q.header) qText += `[${q.header}] `;
+                                    if (q.question) qText += q.question;
+                                    if (q.options && q.options.length > 0) {
+                                        qText += '\n' + q.options.map((o, idx) => `  ${idx + 1}. ${o.label || ''}${o.description ? ` - ${o.description}` : ''}`).join('\n');
+                                    }
+                                    parts.push(qText);
+                                }
+                                question = parts.join('\n\n');
+                            } else {
+                                question = (input.question as string) || (input.message as string) || (input.result as string) || (input.text as string) || '';
+                            }
+                            detail = question.length > 100 ? question.substring(0, 100) + '...' : question;
+                            const toolEntry: ToolUseDetail = { name: toolName, detail: detail || undefined, question: question || undefined };
+                            toolUses.push(toolEntry);
+                            if (toolId) pendingQuestions.set(toolId, toolEntry);
+                            continue; // skip the generic push below
                         } else {
                             detail = (input.file_path as string) || (input.filePath as string) || (input.command as string) || (input.description as string) || '';
                             if (nameLower.includes('read') || nameLower.includes('view') || nameLower.includes('grep') || nameLower.includes('glob') || nameLower.includes('list')) {
@@ -687,7 +782,54 @@ export function getSessionDetail(
             },
             spec_efficiency: sei,
             grade_breakdown: grade.breakdown
-        }
+        },
+        anthropic_metrics: (() => {
+            const humanTurns = messages.filter(m => m.type === 'user' && m.subtype === 'human').length;
+            const commandTurnsDetail = messages.filter(m => m.type === 'user' && (m.subtype === 'command' || m.subtype === 'continuation')).length;
+            const autoTurns = messages.filter(m => m.type === 'user' && (m.subtype === 'tool_result' || m.subtype === '')).length + commandTurnsDetail;
+            const autonomyRate = (autoTurns + humanTurns) > 0
+                ? Math.round((autoTurns / (autoTurns + humanTurns)) * 1000) / 10 : 0;
+            const specFilesInSession = allReadFiles.filter(f => f.includes('.claude/') || f.includes('CLAUDE.md'));
+            const specTriggerRate = specFilesInSession.length > 0 ? 100 : 0;
+            const totalToolCalls = readCount + editCount;
+
+            return {
+                skill_trigger: {
+                    cache_hit_rate: Math.round(cacheHitRate * 10) / 10,
+                    spec_trigger_rate: specTriggerRate,
+                    danger_level: dangerLevel,
+                    limit_impact: limitImpact,
+                },
+                tool_efficiency: {
+                    read_edit_ratio: readEditRatio,
+                    tokens_per_edit: tokensPerEdit,
+                    duplicate_read_rate: duplicateReadRate,
+                    repeated_edit_rate: repeatedEditRate,
+                    total_tool_calls: totalToolCalls,
+                },
+                api_reliability: {
+                    tool_error_rate: Math.round(toolErrorRate * 10) / 10,
+                    tool_error_count: toolErrorCount,
+                    session_exit: sessionExit,
+                    error_details: errorDetails,
+                },
+                user_intervention: {
+                    human_turns: humanTurns,
+                    auto_turns: autoTurns,
+                    autonomy_rate: autonomyRate,
+                    ht_per_edit: editCount > 0 ? Math.round((humanTurns / editCount) * 10) / 10 : 0,
+                },
+                workflow_autonomy: {
+                    repeated_edit_rate: repeatedEditRate,
+                    efficiency_score: Math.round(efficiencyScore),
+                    sei,
+                },
+                session_consistency: {
+                    grade: grade.letter,
+                    grade_breakdown: grade.breakdown,
+                },
+            } as AnthropicMetrics;
+        })(),
     };
 }
 
@@ -788,6 +930,23 @@ export function getAnalytics(
                 avg_duration_without_spec: avg(withoutSpec, s => s.duration_minutes),
                 sessions_with_spec: withSpec.length,
                 sessions_without_spec: withoutSpec.length
+            },
+            anthropic_aggregate: {
+                avg_skill_trigger_rate: sessions.length > 0
+                    ? Math.round(sessions.reduce((sum, s) => sum + s.anthropic_metrics.skill_trigger.cache_hit_rate, 0) / sessions.length * 10) / 10 : 0,
+                avg_spec_trigger_rate: sessions.length > 0
+                    ? Math.round(sessions.filter(s => s.has_spec_context).length / sessions.length * 1000) / 10 : 0,
+                avg_tool_calls_per_session: sessions.length > 0
+                    ? Math.round(sessions.reduce((sum, s) => sum + s.anthropic_metrics.tool_efficiency.total_tool_calls, 0) / sessions.length * 10) / 10 : 0,
+                total_tool_errors: sessions.reduce((sum, s) => sum + s.anthropic_metrics.api_reliability.tool_error_count, 0),
+                avg_autonomy_rate: sessions.length > 0
+                    ? Math.round(sessions.reduce((sum, s) => sum + s.anthropic_metrics.user_intervention.autonomy_rate, 0) / sessions.length * 10) / 10 : 0,
+                avg_ht_per_edit: sessions.length > 0
+                    ? Math.round(sessions.reduce((sum, s) => sum + s.anthropic_metrics.user_intervention.ht_per_edit, 0) / sessions.length * 10) / 10 : 0,
+                workflow_completion_rate: sessions.length > 0
+                    ? Math.round(sessions.filter(s => s.anthropic_metrics.workflow_autonomy.efficiency_score >= 60).length / sessions.length * 1000) / 10 : 0,
+                grade_consistency: sessions.length > 0
+                    ? Math.round(sessions.filter(s => s.anthropic_metrics.session_consistency.grade === 'S' || s.anthropic_metrics.session_consistency.grade === 'A').length / sessions.length * 1000) / 10 : 0,
             }
         },
         projects,

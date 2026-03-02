@@ -146,41 +146,64 @@ export default function Dashboard() {
                 </button>
             </div>
 
-            {/* ── Summary Cards ── */}
+            {/* ── Anthropic Summary Cards ── */}
             <div className="grid-3" style={{ marginBottom: 24 }}>
-                {/* Session Count */}
-                <div className="card" style={{ padding: 24 }}>
-                    <div style={{ fontSize: 13, color: '#9aa0a6', marginBottom: 8, fontWeight: 500 }}>세션</div>
-                    <div style={{ fontSize: 32, fontWeight: 700, color: '#202124', letterSpacing: '-0.03em' }}>{summary.total_sessions}</div>
-                    <div style={{ fontSize: 12, color: '#9aa0a6', marginTop: 6 }}>{summary.total_projects}개 프로젝트</div>
-                </div>
-
-                {/* Avg Efficiency */}
+                {/* Q1: Skill Trigger Rate */}
                 <div className="card" style={{ padding: 24 }}>
                     <div style={{ fontSize: 13, color: '#9aa0a6', marginBottom: 8, fontWeight: 500, display: 'flex', alignItems: 'center' }}>
-                        평균 효율 점수
-                        <InfoTooltip text="캐시 적중률, 도구 안정성, 작업 효율성 등을 종합한 0-100점 점수" />
+                        Q1. 스킬 트리거율
+                        <InfoTooltip text="관련 쿼리의 90%에서 스킬이 트리거되어야 합니다. 캐시 히트율 + 스펙 컨텍스트 활용률" />
                     </div>
-                    <div style={{ fontSize: 32, fontWeight: 700, color: '#202124', letterSpacing: '-0.03em' }}>{summary.avg_efficiency_score}</div>
-                    <div style={{ fontSize: 12, color: '#9aa0a6', marginTop: 6 }}>
-                        정상 종료율 {summary.total_sessions > 0 ? Math.round(summary.clean_exits / summary.total_sessions * 100) : 0}%
-                    </div>
-                </div>
-
-                {/* Context Size */}
-                <div className="card" style={{ padding: 24 }}>
-                    <div style={{ fontSize: 13, color: '#9aa0a6', marginBottom: 8, fontWeight: 500, display: 'flex', alignItems: 'center' }}>
-                        평균 컨텍스트
-                        <InfoTooltip text="요청당 평균 전송된 컨텍스트 토큰 수. 적을수록 효율적" />
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                         <span style={{ fontSize: 32, fontWeight: 700, color: '#202124', letterSpacing: '-0.03em' }}>
-                            {formatNumber(summary.avg_context_size)}
+                            {summary.anthropic_aggregate.avg_skill_trigger_rate}%
                         </span>
-                        <DangerBadge level={summary.danger_level} size="md" />
+                        <span style={{
+                            fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 'var(--radius-pill)',
+                            background: summary.anthropic_aggregate.avg_skill_trigger_rate >= 70 ? '#e6f4ea' : '#fef7e0',
+                            color: summary.anthropic_aggregate.avg_skill_trigger_rate >= 70 ? '#1e8e3e' : '#e37400'
+                        }}>캐시 히트</span>
                     </div>
                     <div style={{ fontSize: 12, color: '#9aa0a6', marginTop: 6 }}>
-                        에러율 {summary.avg_tool_error_rate}%
+                        스펙 활용률 {summary.anthropic_aggregate.avg_spec_trigger_rate}% · {summary.total_sessions}개 세션
+                    </div>
+                </div>
+
+                {/* Q2+Q3: Tool Efficiency & API Reliability */}
+                <div className="card" style={{ padding: 24 }}>
+                    <div style={{ fontSize: 13, color: '#9aa0a6', marginBottom: 8, fontWeight: 500, display: 'flex', alignItems: 'center' }}>
+                        Q2·Q3. 도구 효율 & API 안정
+                        <InfoTooltip text="X도구 호출로 완료 + 워크플로당 API 실패 0회 목표" />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                        <span style={{ fontSize: 32, fontWeight: 700, color: '#202124', letterSpacing: '-0.03em' }}>
+                            {summary.anthropic_aggregate.avg_tool_calls_per_session}
+                        </span>
+                        <span style={{ fontSize: 13, color: '#9aa0a6' }}>평균 도구 호출</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: '#9aa0a6', marginTop: 6 }}>
+                        총 에러 {summary.anthropic_aggregate.total_tool_errors}회 · 에러율 {summary.avg_tool_error_rate}%
+                    </div>
+                </div>
+
+                {/* Q4+Q5: User Intervention & Workflow Autonomy */}
+                <div className="card" style={{ padding: 24 }}>
+                    <div style={{ fontSize: 13, color: '#9aa0a6', marginBottom: 8, fontWeight: 500, display: 'flex', alignItems: 'center' }}>
+                        Q4·Q5. 자율 실행 & 워크플로우
+                        <InfoTooltip text="사용자 개입 없이 워크플로우가 자립적으로 완료되어야 합니다" />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                        <span style={{ fontSize: 32, fontWeight: 700, color: '#202124', letterSpacing: '-0.03em' }}>
+                            {summary.anthropic_aggregate.avg_autonomy_rate}%
+                        </span>
+                        <span style={{
+                            fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 'var(--radius-pill)',
+                            background: summary.anthropic_aggregate.avg_autonomy_rate >= 60 ? '#e6f4ea' : '#fef7e0',
+                            color: summary.anthropic_aggregate.avg_autonomy_rate >= 60 ? '#1e8e3e' : '#e37400'
+                        }}>자율 실행률</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: '#9aa0a6', marginTop: 6 }}>
+                        워크플로우 완료율 {summary.anthropic_aggregate.workflow_completion_rate}% · HT/Edit {summary.anthropic_aggregate.avg_ht_per_edit}
                     </div>
                 </div>
             </div>
@@ -189,7 +212,7 @@ export default function Dashboard() {
             <div className="grid-3" style={{ marginBottom: 24 }}>
                 {/* Session Health Pie */}
                 <div className="card" style={{ padding: 24 }}>
-                    <h3 style={{ fontSize: 14, fontWeight: 600, color: '#202124', margin: '0 0 16px', letterSpacing: '-0.01em' }}>세션 상태 분포</h3>
+                    <h3 style={{ fontSize: 14, fontWeight: 600, color: '#202124', margin: '0 0 16px', letterSpacing: '-0.01em' }}>Q1. 스킬 트리거 현황</h3>
                     <div style={{ height: 160 }}>
                         <ResponsiveContainer>
                             <PieChart>
@@ -214,7 +237,7 @@ export default function Dashboard() {
 
                 {/* Grade Distribution */}
                 <div className="card" style={{ padding: 24 }}>
-                    <h3 style={{ fontSize: 14, fontWeight: 600, color: '#202124', margin: '0 0 16px', letterSpacing: '-0.01em' }}>등급 분포</h3>
+                    <h3 style={{ fontSize: 14, fontWeight: 600, color: '#202124', margin: '0 0 16px', letterSpacing: '-0.01em' }}>Q6. 일관성 분포</h3>
                     <div style={{ height: 160 }}>
                         <ResponsiveContainer>
                             <BarChart data={gradeData} barSize={32}>
@@ -251,16 +274,16 @@ export default function Dashboard() {
             {(hyp.sessions_with_spec > 0 || hyp.sessions_without_spec > 0) && (
                 <div className="card" style={{ padding: 28, marginBottom: 24 }}>
                     <h3 style={{ fontSize: 15, fontWeight: 600, color: '#202124', margin: '0 0 24px', display: 'flex', alignItems: 'center', gap: 6, letterSpacing: '-0.01em' }}>
-                        Spec 컨텍스트 효과 분석
-                        <InfoTooltip text=".claude/ 또는 CLAUDE.md 파일이 있는 세션과 없는 세션의 생산성을 비교 분석합니다" />
+                        Q4·Q5. Spec 컨텍스트 효과 분석
+                        <InfoTooltip text="Anthropic Q4(사용자 개입 빈도) + Q5(워크플로우 자립도): .claude/ 또는 CLAUDE.md 스펙이 있는 세션과 없는 세션의 자율성을 비교 분석합니다" />
                     </h3>
 
                     <div className="grid-3" style={{ gap: 16 }}>
                         {/* Productivity improvement */}
                         <div style={{ background: '#f8f9fa', borderRadius: 16, padding: 20 }}>
                             <div style={{ fontSize: 12, color: '#9aa0a6', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
-                                생산성 변화
-                                <InfoTooltip text={`Edit당 사용자 개입 횟수 기준.\nSpec 있음: ${hyp.avg_ht_per_edit_with_spec}회\nSpec 없음: ${hyp.avg_ht_per_edit_without_spec}회\n\n양수(+) = Spec 사용 시 더 효율적 (좋음)\n음수(-) = Spec 없이 더 효율적`} />
+                                Q5. 워크플로우 자립도 변화
+                                <InfoTooltip text={`Edit당 사용자 개입 횟수 기준.\nSpec 있음: ${hyp.avg_ht_per_edit_with_spec}회\nSpec 없음: ${hyp.avg_ht_per_edit_without_spec}회\n\n양수(+) = Spec 사용 시 더 자립적 (좋음)\n음수(-) = Spec 없이 더 효율적`} />
                             </div>
                             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                                 <span style={{
@@ -285,7 +308,7 @@ export default function Dashboard() {
                         {/* Human turn comparison */}
                         <div style={{ background: '#f8f9fa', borderRadius: 16, padding: 20 }}>
                             <div style={{ fontSize: 12, color: '#9aa0a6', marginBottom: 10, fontWeight: 500 }}>
-                                Edit당 사용자 개입
+                                Q4. Edit당 사용자 개입
                             </div>
                             <div style={{ display: 'flex', gap: 24 }}>
                                 <div>
@@ -346,6 +369,7 @@ export default function Dashboard() {
                                 <th>프로젝트</th>
                                 <th>등급</th>
                                 <th>효율</th>
+                                <th>자율률</th>
                                 <th style={{ textAlign: 'right' }}>컨텍스트</th>
                                 <th>상태</th>
                                 <th>에러율</th>
@@ -369,6 +393,15 @@ export default function Dashboard() {
                                                 : session.efficiency_score >= 40 ? '#e37400' : '#d93025'
                                         }}>
                                             {session.efficiency_score}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span style={{
+                                            fontSize: 12, fontWeight: 600,
+                                            color: session.anthropic_metrics.user_intervention.autonomy_rate >= 60 ? '#1e8e3e'
+                                                : session.anthropic_metrics.user_intervention.autonomy_rate >= 30 ? '#e37400' : '#d93025'
+                                        }}>
+                                            {session.anthropic_metrics.user_intervention.autonomy_rate}%
                                         </span>
                                     </td>
                                     <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontSize: 12, letterSpacing: '-0.02em' }}>

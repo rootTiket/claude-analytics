@@ -1,5 +1,78 @@
 // ── Shared type definitions for the Claude Analytics server ──
 
+// ── Anthropic Skill Evaluation Framework Types ──
+
+export interface AnthropicSkillTrigger {
+    cache_hit_rate: number;
+    spec_trigger_rate: number;
+    danger_level: 'optimal' | 'safe' | 'caution' | 'critical';
+    limit_impact: number;
+}
+
+export interface AnthropicToolEfficiency {
+    read_edit_ratio: number;
+    tokens_per_edit: number;
+    duplicate_read_rate: number;
+    repeated_edit_rate: number;
+    total_tool_calls: number;
+}
+
+export interface AnthropicApiReliability {
+    tool_error_rate: number;
+    tool_error_count: number;
+    session_exit: 'clean' | 'forced' | 'unknown';
+    error_details?: { tool: string; error: string; count: number }[];
+}
+
+export interface AnthropicUserIntervention {
+    human_turns: number;
+    auto_turns: number;
+    autonomy_rate: number;
+    ht_per_edit: number;
+}
+
+export interface AnthropicWorkflowAutonomy {
+    repeated_edit_rate: number;
+    efficiency_score: number;
+    sei?: {
+        sei_score: number;
+        accuracy: number;
+        volume_tokens: number;
+        interpretation: string;
+    };
+}
+
+export interface AnthropicSessionConsistency {
+    grade: 'S' | 'A' | 'B' | 'C';
+    grade_breakdown: {
+        efficiency: number;
+        stability: number;
+        precision: number;
+        penalty: number;
+        final_score: number;
+    };
+}
+
+export interface AnthropicMetrics {
+    skill_trigger: AnthropicSkillTrigger;
+    tool_efficiency: AnthropicToolEfficiency;
+    api_reliability: AnthropicApiReliability;
+    user_intervention: AnthropicUserIntervention;
+    workflow_autonomy: AnthropicWorkflowAutonomy;
+    session_consistency: AnthropicSessionConsistency;
+}
+
+export interface AnthropicAggregate {
+    avg_skill_trigger_rate: number;
+    avg_spec_trigger_rate: number;
+    avg_tool_calls_per_session: number;
+    total_tool_errors: number;
+    avg_autonomy_rate: number;
+    avg_ht_per_edit: number;
+    workflow_completion_rate: number;
+    grade_consistency: number;
+}
+
 export interface UsageData {
     input_tokens: number;
     output_tokens: number;
@@ -36,6 +109,8 @@ export interface ContentBlock {
 export interface ToolUseDetail {
     name: string;
     detail?: string;
+    question?: string;
+    answer?: string;
 }
 
 export interface ProcessedMessage {
@@ -84,6 +159,7 @@ export interface SessionSummary {
     // Turn decomposition
     human_turns: number;
     auto_turns: number;
+    command_turns: number;
     human_turns_per_edit: number;
     // Advanced metrics
     spec_efficiency?: {
@@ -99,6 +175,8 @@ export interface SessionSummary {
         penalty: number;
         final_score: number;
     };
+    // Anthropic Skill Evaluation Framework
+    anthropic_metrics: AnthropicMetrics;
 }
 
 export interface ScoreBreakdown {
@@ -154,6 +232,8 @@ export interface SessionDetail {
             final_score: number;
         };
     };
+    // Anthropic Skill Evaluation Framework
+    anthropic_metrics: AnthropicMetrics;
 }
 
 export interface AppConfig {
@@ -197,6 +277,8 @@ export interface AnalyticsSummary {
     clean_exits: number;
     forced_exits: number;
     hypothesis_check: HypothesisCheck;
+    // Anthropic Aggregate Metrics
+    anthropic_aggregate: AnthropicAggregate;
 }
 
 export interface AnalyticsResponse {

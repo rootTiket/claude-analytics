@@ -1,5 +1,61 @@
 // ── Shared TypeScript types for the frontend ──
 
+// ── Anthropic Skill Evaluation Framework Types ──
+
+export interface AnthropicMetrics {
+    skill_trigger: {
+        cache_hit_rate: number
+        spec_trigger_rate: number
+        danger_level: 'optimal' | 'safe' | 'caution' | 'critical'
+        limit_impact: number
+    }
+    tool_efficiency: {
+        read_edit_ratio: number
+        tokens_per_edit: number
+        duplicate_read_rate: number
+        repeated_edit_rate: number
+        total_tool_calls: number
+    }
+    api_reliability: {
+        tool_error_rate: number
+        tool_error_count: number
+        session_exit: 'clean' | 'forced' | 'unknown'
+        error_details?: { tool: string; error: string; count: number }[]
+    }
+    user_intervention: {
+        human_turns: number
+        auto_turns: number
+        autonomy_rate: number
+        ht_per_edit: number
+    }
+    workflow_autonomy: {
+        repeated_edit_rate: number
+        efficiency_score: number
+        sei?: { sei_score: number; accuracy: number; volume_tokens: number; interpretation: string }
+    }
+    session_consistency: {
+        grade: 'S' | 'A' | 'B' | 'C'
+        grade_breakdown: {
+            efficiency: number
+            stability: number
+            precision: number
+            penalty: number
+            final_score: number
+        }
+    }
+}
+
+export interface AnthropicAggregate {
+    avg_skill_trigger_rate: number
+    avg_spec_trigger_rate: number
+    avg_tool_calls_per_session: number
+    total_tool_errors: number
+    avg_autonomy_rate: number
+    avg_ht_per_edit: number
+    workflow_completion_rate: number
+    grade_consistency: number
+}
+
 export interface Session {
     session_id: string
     project: string
@@ -25,7 +81,9 @@ export interface Session {
     has_spec_context: boolean
     human_turns: number
     auto_turns: number
+    command_turns: number
     human_turns_per_edit: number
+    anthropic_metrics: AnthropicMetrics
 }
 
 export interface Project {
@@ -71,6 +129,7 @@ export interface Analytics {
         clean_exits: number
         forced_exits: number
         hypothesis_check: HypothesisCheck
+        anthropic_aggregate: AnthropicAggregate
     }
     projects: Project[]
     sessions: Session[]
@@ -86,6 +145,8 @@ export interface UsageData {
 export interface ToolUseDetail {
     name: string
     detail?: string
+    question?: string
+    answer?: string
 }
 
 export interface Message {
@@ -137,6 +198,7 @@ export interface SessionDetailData {
         }
         error_details?: { tool: string; error: string; count: number }[]
     }
+    anthropic_metrics?: AnthropicMetrics
 }
 
 export interface AppConfig {

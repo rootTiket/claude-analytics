@@ -129,31 +129,61 @@ export default function SessionDetail() {
                 </div>
             </div>
 
-            {/* ── Quality Metrics ── */}
+            {/* ── Anthropic Metrics (6 Categories) ── */}
             {quality && (
                 <div className="card" style={{ padding: 24, marginBottom: 24 }}>
                     <h3 style={{ fontSize: 15, fontWeight: 600, color: '#202124', margin: '0 0 20px', letterSpacing: '-0.01em' }}>
-                        품질 지표
+                        Anthropic 스킬 평가 지표
                     </h3>
-                    <div className="grid-4" style={{ gap: 12 }}>
-                        <MetricBox label="R/E 비율" value={quality.read_edit_ratio}
-                            sub={`Read ${quality.read_count} / Edit ${quality.edit_count}`}
-                            tooltip="파일 읽기 횟수 / 편집 횟수. 3-20이 이상적" />
-                        <MetricBox label="중복 읽기율" value={`${quality.duplicate_read_rate}%`}
-                            sub={`도구 에러율 ${quality.tool_error_rate}%`}
-                            tooltip="같은 파일을 여러 번 읽은 비율. 낮을수록 좋음" />
-                        <MetricBox label="캐시 적중률" value={`${quality.cache_hit_rate}%`}
-                            sub={`Edit당 토큰 ${formatNumber(quality.tokens_per_edit)}`}
-                            tooltip="캐시에서 읽은 토큰 비율. 높을수록 좋음" />
-                        <MetricBox label="반복 편집율" value={`${quality.repeated_edit_rate}%`}
-                            sub={`토큰/Edit ${formatNumber(quality.tokens_per_edit)}`}
-                            tooltip="같은 파일을 여러 번 편집한 비율. 낮을수록 좋음" />
+
+                    {/* Quantitative Row */}
+                    <div style={{ fontSize: 12, color: '#9aa0a6', fontWeight: 600, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        📊 정량적 지표
+                    </div>
+                    <div className="grid-3" style={{ gap: 12, marginBottom: 20 }}>
+                        <MetricBox
+                            label="Q1. 스킬 트리거율"
+                            value={`${session.anthropic_metrics?.skill_trigger.cache_hit_rate ?? quality.cache_hit_rate}%`}
+                            sub={`스펙 활용 ${session.anthropic_metrics?.skill_trigger.spec_trigger_rate ?? 0}%`}
+                            tooltip="캐시 히트율: 스킬(컨텍스트)이 자동으로 로드된 비율. 목표 ≥70%" />
+                        <MetricBox
+                            label="Q2. 도구 효율성"
+                            value={quality.read_edit_ratio}
+                            sub={`Read ${quality.read_count} / Edit ${quality.edit_count} · 도구 ${session.anthropic_metrics?.tool_efficiency.total_tool_calls ?? 0}회`}
+                            tooltip="R/E 비율: 파일 읽기/편집 비율. 3-20이 이상적. 중복읽기율·반복수정율 포함" />
+                        <MetricBox
+                            label="Q3. API 실패율"
+                            value={`${quality.tool_error_rate}%`}
+                            sub={`에러 ${session.anthropic_metrics?.api_reliability.tool_error_count ?? 0}회 · ${quality.session_exit === 'clean' ? '정상 종료' : quality.session_exit === 'forced' ? '강제 종료' : '알 수 없음'}`}
+                            tooltip="도구 오류율: 실패한 도구 호출 비율. 목표 0%" />
+                    </div>
+
+                    {/* Qualitative Row */}
+                    <div style={{ fontSize: 12, color: '#9aa0a6', fontWeight: 600, marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        🎯 정성적 지표
+                    </div>
+                    <div className="grid-3" style={{ gap: 12 }}>
+                        <MetricBox
+                            label="Q4. 사용자 개입"
+                            value={`${session.anthropic_metrics?.user_intervention.autonomy_rate ?? 0}%`}
+                            sub={`Human ${session.anthropic_metrics?.user_intervention.human_turns ?? 0} / Auto ${session.anthropic_metrics?.user_intervention.auto_turns ?? 0} · HT/Edit ${session.anthropic_metrics?.user_intervention.ht_per_edit ?? 0}`}
+                            tooltip="자율 실행률: 사용자 개입 없이 진행된 비율. 높을수록 좋음. 목표 HT/Edit < 1.0" />
+                        <MetricBox
+                            label="Q5. 워크플로우 자립"
+                            value={quality.efficiency_score}
+                            sub={`반복수정율 ${quality.repeated_edit_rate}% · 토큰/Edit ${formatNumber(quality.tokens_per_edit)}`}
+                            tooltip="효율성 점수: 캐시·오류·작업 효율 종합 (100점). 목표 ≥80" />
+                        <MetricBox
+                            label="Q6. 일관성"
+                            value={session.anthropic_metrics?.session_consistency.grade ?? quality.session_grade}
+                            sub={`점수 ${session.anthropic_metrics?.session_consistency.grade_breakdown.final_score ?? 0} · 캐시 ${quality.cache_hit_rate}%`}
+                            tooltip="Engineering Grade: Efficiency(40%) + Stability(30%) + Precision(30%). S·A급 달성 목표" />
                     </div>
 
                     {/* Score breakdown */}
                     {quality.score_breakdown && (
                         <div style={{ marginTop: 20, padding: '16px 20px', background: '#f8f9fa', borderRadius: 16 }}>
-                            <div style={{ fontSize: 12, color: '#9aa0a6', marginBottom: 10, fontWeight: 500 }}>점수 상세</div>
+                            <div style={{ fontSize: 12, color: '#9aa0a6', marginBottom: 10, fontWeight: 500 }}>Q5·Q6 점수 상세</div>
                             <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
                                 {[
                                     { name: '캐시', val: quality.score_breakdown.cache, max: 30 },
@@ -179,7 +209,7 @@ export default function SessionDetail() {
                     {/* Error details */}
                     {quality.error_details && quality.error_details.length > 0 && (
                         <div style={{ marginTop: 20 }}>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: '#d93025', marginBottom: 8 }}>에러 상세</div>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: '#d93025', marginBottom: 8 }}>Q3. 에러 상세</div>
                             {quality.error_details.map((err, i) => (
                                 <div key={i} style={{ fontSize: 12, padding: '8px 0', borderBottom: '1px solid #f1f3f4', display: 'flex', gap: 8 }}>
                                     <span style={{ color: '#9aa0a6', minWidth: 60 }}>{err.tool}</span>
@@ -338,22 +368,72 @@ export default function SessionDetail() {
 
                                 {/* Tool uses */}
                                 {msg.tool_uses.length > 0 && (
-                                    <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                                        {msg.tool_uses.map((tool, i) => (
-                                            <span key={i} style={{
-                                                fontSize: 11, padding: '3px 10px', borderRadius: 'var(--radius-pill)',
-                                                background: '#e8f0fe', color: '#1a73e8',
-                                                fontFamily: 'ui-monospace, monospace',
-                                                display: 'inline-flex', alignItems: 'center', gap: 4
-                                            }}>
-                                                <span style={{ fontSize: 10 }}>{TOOL_ICONS[tool.name] || TOOL_ICONS.tool}</span>
-                                                {tool.name}
-                                                {tool.detail && (
-                                                    <span style={{ color: '#9aa0a6', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>
-                                                        {shortenPath(tool.detail)}
+                                    <div style={{ marginTop: 10 }}>
+                                        {/* Regular tool pills */}
+                                        {msg.tool_uses.filter(t => !t.question).length > 0 && (
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                                                {msg.tool_uses.filter(t => !t.question).map((tool, i) => (
+                                                    <span key={i} style={{
+                                                        fontSize: 11, padding: '3px 10px', borderRadius: 'var(--radius-pill)',
+                                                        background: '#e8f0fe', color: '#1a73e8',
+                                                        fontFamily: 'ui-monospace, monospace',
+                                                        display: 'inline-flex', alignItems: 'center', gap: 4
+                                                    }}>
+                                                        <span style={{ fontSize: 10 }}>{TOOL_ICONS[tool.name] || TOOL_ICONS.tool}</span>
+                                                        {tool.name}
+                                                        {tool.detail && (
+                                                            <span style={{ color: '#9aa0a6', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>
+                                                                {shortenPath(tool.detail)}
+                                                            </span>
+                                                        )}
                                                     </span>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {/* Interactive tool Q&A */}
+                                        {msg.tool_uses.filter(t => t.question).map((tool, i) => (
+                                            <div key={`qa-${i}`} style={{
+                                                marginTop: 8, padding: '12px 16px', borderRadius: 12,
+                                                background: '#fef7e0', border: '1px solid #fde68a',
+                                            }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                                                    <span style={{ fontSize: 14 }}>💬</span>
+                                                    <span style={{
+                                                        fontSize: 11, fontWeight: 600, color: '#92400e',
+                                                        textTransform: 'uppercase', letterSpacing: '0.03em'
+                                                    }}>
+                                                        {tool.name}
+                                                    </span>
+                                                </div>
+                                                <div style={{
+                                                    fontSize: 13, color: '#78350f', lineHeight: 1.6,
+                                                    whiteSpace: 'pre-wrap', wordBreak: 'break-word'
+                                                }}>
+                                                    {tool.question}
+                                                </div>
+                                                {tool.answer && (
+                                                    <div style={{
+                                                        marginTop: 10, paddingTop: 10,
+                                                        borderTop: '1px dashed #fbbf24'
+                                                    }}>
+                                                        <div style={{
+                                                            fontSize: 10, fontWeight: 600, color: '#1a73e8',
+                                                            marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.03em'
+                                                        }}>
+                                                            👤 사용자 응답
+                                                        </div>
+                                                        <div style={{
+                                                            fontSize: 13, color: '#1e3a5f', lineHeight: 1.6,
+                                                            whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                                                            background: '#eff6ff', padding: '8px 12px',
+                                                            borderRadius: 8, borderLeft: '3px solid #1a73e8'
+                                                        }}>
+                                                            {tool.answer}
+                                                        </div>
+                                                    </div>
                                                 )}
-                                            </span>
+                                            </div>
                                         ))}
                                     </div>
                                 )}
