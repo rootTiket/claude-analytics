@@ -26,5 +26,5 @@ export const GRADE_STYLES: Record<string, { bg: string; text: string; label: str
 export const TOOL_ICONS: Record<string, string> = {
     Read: '◻', Edit: '✎', Write: '➕', Bash: '▸',
     Grep: '⌕', Glob: '⊞', Task: '☰', TaskCreate: '➕',
-    TaskUpdate: '⟳', TaskList: '☰', tool: '⚙'
+    TaskUpdate: '⟳', TaskList: '☰', Ask: '💬', tool: '⚙'
 }
