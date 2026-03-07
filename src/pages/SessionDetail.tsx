@@ -9,7 +9,7 @@ import InfoTooltip from '../components/InfoTooltip'
 import GradeBadge from '../components/badges/GradeBadge'
 import DangerBadge from '../components/badges/DangerBadge'
 import { formatNumber, formatDateFull, shortenPath } from '../utils/format'
-import { TOOL_ICONS } from '../utils/constants'
+import { TOOL_ICONS, TOOL_CATEGORY_COLORS, SKILL_ICONS } from '../utils/constants'
 import type { SessionDetailData } from '../types'
 
 export default function SessionDetail() {
@@ -166,7 +166,7 @@ export default function SessionDetail() {
                         <MetricBox
                             label="Q4. 사용자 개입"
                             value={`${session.anthropic_metrics?.user_intervention.autonomy_rate ?? 0}%`}
-                            sub={`Human ${session.anthropic_metrics?.user_intervention.human_turns ?? 0} / Auto ${session.anthropic_metrics?.user_intervention.auto_turns ?? 0} · HT/Edit ${session.anthropic_metrics?.user_intervention.ht_per_edit ?? 0}`}
+                            sub={`Human ${session.anthropic_metrics?.user_intervention.human_turns ?? 0} / Auto ${session.anthropic_metrics?.user_intervention.auto_turns ?? 0}`}
                             tooltip="자율 실행률: 사용자 개입 없이 진행된 비율. 높을수록 좋음. 목표 HT/Edit < 1.0" />
                         <MetricBox
                             label="Q5. 워크플로우 자립"
@@ -340,6 +340,17 @@ export default function SessionDetail() {
                                             {subtypeLabel}
                                         </span>
                                     )}
+                                    {/* Skill badge */}
+                                    {msg.skill_name && (
+                                        <span style={{
+                                            fontSize: 10, padding: '2px 8px', borderRadius: 'var(--radius-pill)',
+                                            background: '#fef3c7', color: '#92400e', fontWeight: 600,
+                                            display: 'inline-flex', alignItems: 'center', gap: 3
+                                        }}>
+                                            {SKILL_ICONS[msg.skill_name] || SKILL_ICONS.default}
+                                            {msg.skill_name}
+                                        </span>
+                                    )}
                                     {msg.timestamp && (
                                         <span style={{ fontSize: 10, color: '#9aa0a6', marginLeft: 'auto' }}>
                                             {new Date(msg.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
@@ -372,22 +383,27 @@ export default function SessionDetail() {
                                         {/* Regular tool pills */}
                                         {msg.tool_uses.filter(t => !t.question).length > 0 && (
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                                                {msg.tool_uses.filter(t => !t.question).map((tool, i) => (
-                                                    <span key={i} style={{
-                                                        fontSize: 11, padding: '3px 10px', borderRadius: 'var(--radius-pill)',
-                                                        background: '#e8f0fe', color: '#1a73e8',
-                                                        fontFamily: 'ui-monospace, monospace',
-                                                        display: 'inline-flex', alignItems: 'center', gap: 4
-                                                    }}>
-                                                        <span style={{ fontSize: 10 }}>{TOOL_ICONS[tool.name] || TOOL_ICONS.tool}</span>
-                                                        {tool.name}
-                                                        {tool.detail && (
-                                                            <span style={{ color: '#9aa0a6', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>
-                                                                {shortenPath(tool.detail)}
-                                                            </span>
-                                                        )}
-                                                    </span>
-                                                ))}
+                                                {msg.tool_uses.filter(t => !t.question).map((tool, i) => {
+                                                    const cat = tool.category || 'other'
+                                                    const colors = TOOL_CATEGORY_COLORS[cat] || TOOL_CATEGORY_COLORS.other
+                                                    return (
+                                                        <span key={i} title={tool.detail || ''} style={{
+                                                            fontSize: 11, padding: '3px 10px', borderRadius: 'var(--radius-pill)',
+                                                            background: colors.bg, color: colors.text,
+                                                            fontFamily: 'ui-monospace, monospace',
+                                                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                                                            cursor: tool.detail ? 'help' : 'default',
+                                                        }}>
+                                                            <span style={{ fontSize: 10 }}>{TOOL_ICONS[tool.name] || TOOL_ICONS.tool}</span>
+                                                            {tool.name}
+                                                            {tool.detail && (
+                                                                <span style={{ color: colors.text, opacity: 0.7, maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>
+                                                                    {shortenPath(tool.detail)}
+                                                                </span>
+                                                            )}
+                                                        </span>
+                                                    )
+                                                })}
                                             </div>
                                         )}
 
@@ -444,11 +460,12 @@ export default function SessionDetail() {
                                         {msg.files_read.map((f, i) => {
                                             const isSpec = f.includes('.claude/') || f.includes('CLAUDE.md')
                                             return (
-                                                <span key={i} style={{
+                                                <span key={i} title={f} style={{
                                                     fontSize: 10, padding: '2px 8px', borderRadius: 'var(--radius-pill)',
                                                     background: isSpec ? '#e8f0fe' : '#f1f3f4',
                                                     color: isSpec ? '#1a73e8' : '#9aa0a6',
-                                                    fontFamily: 'ui-monospace, monospace'
+                                                    fontFamily: 'ui-monospace, monospace',
+                                                    cursor: 'help',
                                                 }}>
                                                     {shortenPath(f)}
                                                 </span>

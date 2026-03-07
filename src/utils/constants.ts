@@ -24,7 +24,24 @@ export const GRADE_STYLES: Record<string, { bg: string; text: string; label: str
 }
 
 export const TOOL_ICONS: Record<string, string> = {
-    Read: '◻', Edit: '✎', Write: '➕', Bash: '▸',
-    Grep: '⌕', Glob: '⊞', Task: '☰', TaskCreate: '➕',
-    TaskUpdate: '⟳', TaskList: '☰', Ask: '💬', tool: '⚙'
+    Read: '📖', View: '📖', Edit: '✏️', Write: '📝', Replace: '✏️',
+    Bash: '▸', Grep: '🔍', Glob: '📂', Search: '🔍',
+    Task: '☰', TaskCreate: '➕', TaskUpdate: '⟳', TaskList: '☰',
+    Ask: '💬', AskFollowupQuestion: '💬', AskUserQuestion: '💬',
+    attempt_completion: '✅', tool: '⚙', tool_result: '↩️',
+    ListFiles: '📂', ListCodeDefinitionNames: '📋',
+}
+
+export const TOOL_CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
+    read_spec: { bg: '#e8f0fe', text: '#1a73e8' },
+    read_code: { bg: '#f1f3f4', text: '#5f6368' },
+    edit: { bg: '#e6f4ea', text: '#1e8e3e' },
+    command: { bg: '#fef3c7', text: '#92400e' },
+    search: { bg: '#f3e8ff', text: '#7c3aed' },
+    other: { bg: '#f1f3f4', text: '#9aa0a6' },
+}
+
+export const SKILL_ICONS: Record<string, string> = {
+    feature: '🚀', fix: '🔧', refactor: '♻️', test: '🧪',
+    docs: '📄', review: '👀', init: '🎬', default: '⚡',
 }

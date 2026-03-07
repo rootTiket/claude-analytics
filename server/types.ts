@@ -6,7 +6,6 @@ export interface AnthropicSkillTrigger {
     cache_hit_rate: number;
     spec_trigger_rate: number;
     danger_level: 'optimal' | 'safe' | 'caution' | 'critical';
-    limit_impact: number;
 }
 
 export interface AnthropicToolEfficiency {
@@ -28,11 +27,9 @@ export interface AnthropicUserIntervention {
     human_turns: number;
     auto_turns: number;
     autonomy_rate: number;
-    ht_per_edit: number;
 }
 
 export interface AnthropicWorkflowAutonomy {
-    repeated_edit_rate: number;
     efficiency_score: number;
     sei?: {
         sei_score: number;
@@ -68,7 +65,6 @@ export interface AnthropicAggregate {
     avg_tool_calls_per_session: number;
     total_tool_errors: number;
     avg_autonomy_rate: number;
-    avg_ht_per_edit: number;
     workflow_completion_rate: number;
     grade_consistency: number;
 }
@@ -86,6 +82,7 @@ export interface Message {
     message?: {
         usage?: UsageData;
         content?: ContentBlock[] | string;
+        model?: string;
     };
     toolUseResult?: {
         file?: { filePath: string };
@@ -111,6 +108,7 @@ export interface ToolUseDetail {
     detail?: string;
     question?: string;
     answer?: string;
+    category?: 'read_spec' | 'read_code' | 'edit' | 'command' | 'search' | 'other';
 }
 
 export interface ProcessedMessage {
@@ -122,6 +120,7 @@ export interface ProcessedMessage {
     usage?: UsageData;
     files_read: string[];
     tool_uses: ToolUseDetail[];
+    skill_name?: string;
 }
 
 export interface Project {
@@ -133,15 +132,14 @@ export interface Project {
 export interface SessionSummary {
     session_id: string;
     project: string;
+    model: string;
     start_time: string;
     end_time: string;
     git_branch: string;
     total_requests: number;
     avg_context_size: number;
     danger_level: 'optimal' | 'safe' | 'caution' | 'critical';
-    limit_impact: number;
     total_context_tokens: number;
-    total_output_tokens: number;
     // Quality metrics
     duplicate_read_rate: number;
     read_edit_ratio: number;
@@ -160,7 +158,7 @@ export interface SessionSummary {
     human_turns: number;
     auto_turns: number;
     command_turns: number;
-    human_turns_per_edit: number;
+    edit_count: number;
     // Advanced metrics
     spec_efficiency?: {
         sei_score: number;
@@ -190,6 +188,7 @@ export interface ScoreBreakdown {
 export interface SessionDetail {
     session_id: string;
     project: string;
+    model: string;
     start_time: string;
     end_time: string;
     git_branch: string;
@@ -198,7 +197,6 @@ export interface SessionDetail {
         total_requests: number;
         avg_context_size: number;
         danger_level: 'optimal' | 'safe' | 'caution' | 'critical';
-        limit_impact: number;
         total_context_tokens: number;
         files_read: string[];
         spec_files_read: string[];
@@ -242,16 +240,16 @@ export interface AppConfig {
 }
 
 export interface HypothesisCheck {
-    avg_turns_with_spec: number;
-    avg_turns_without_spec: number;
-    avg_human_turns_with_spec: number;
-    avg_human_turns_without_spec: number;
-    human_turn_improvement: number;
-    avg_ht_per_edit_with_spec: number;
-    avg_ht_per_edit_without_spec: number;
-    normalized_improvement: number;
-    avg_duration_with_spec: number;
-    avg_duration_without_spec: number;
+    // HT/E: Human Turns per Edit (lower = more autonomous)
+    hte_with_spec: number;
+    hte_without_spec: number;
+    hte_improvement: number;
+    // SEI: Spec Efficiency Index comparison
+    avg_sei_with_spec: number;
+    avg_sei_without_spec: number;
+    // P99 autonomous duration (minutes) — tail-end tracking
+    p99_duration_with_spec: number;
+    p99_duration_without_spec: number;
     sessions_with_spec: number;
     sessions_without_spec: number;
 }
@@ -260,10 +258,8 @@ export interface AnalyticsSummary {
     total_sessions: number;
     total_projects: number;
     total_context_tokens: number;
-    total_output_tokens: number;
     avg_context_size: number;
     danger_level: string;
-    limit_impact: number;
     optimal_sessions: number;
     safe_sessions: number;
     caution_sessions: number;

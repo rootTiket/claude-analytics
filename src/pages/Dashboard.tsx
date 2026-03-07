@@ -8,7 +8,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, 
 import InfoTooltip from '../components/InfoTooltip'
 import GradeBadge from '../components/badges/GradeBadge'
 import DangerBadge from '../components/badges/DangerBadge'
-import { formatNumber, formatDate } from '../utils/format'
+import { formatNumber, formatDate, shortenProjectPath } from '../utils/format'
 import type { Analytics, Session, Project } from '../types'
 
 const HEALTH_COLORS = ['#1a73e8', '#1e8e3e', '#e37400', '#d93025']
@@ -203,7 +203,7 @@ export default function Dashboard() {
                         }}>자율 실행률</span>
                     </div>
                     <div style={{ fontSize: 12, color: '#9aa0a6', marginTop: 6 }}>
-                        워크플로우 완료율 {summary.anthropic_aggregate.workflow_completion_rate}% · HT/Edit {summary.anthropic_aggregate.avg_ht_per_edit}
+                        워크플로우 완료율 {summary.anthropic_aggregate.workflow_completion_rate}%
                     </div>
                 </div>
             </div>
@@ -270,81 +270,84 @@ export default function Dashboard() {
                 </div>
             </div>
 
-            {/* ── Spec 컨텍스트 효과 분석 ── */}
+            {/* ── Spec 자율성 효과 (HT/E · SEI · P99) ── */}
             {(hyp.sessions_with_spec > 0 || hyp.sessions_without_spec > 0) && (
                 <div className="card" style={{ padding: 28, marginBottom: 24 }}>
                     <h3 style={{ fontSize: 15, fontWeight: 600, color: '#202124', margin: '0 0 24px', display: 'flex', alignItems: 'center', gap: 6, letterSpacing: '-0.01em' }}>
-                        Q4·Q5. Spec 컨텍스트 효과 분석
-                        <InfoTooltip text="Anthropic Q4(사용자 개입 빈도) + Q5(워크플로우 자립도): .claude/ 또는 CLAUDE.md 스펙이 있는 세션과 없는 세션의 자율성을 비교 분석합니다" />
+                        Q4·Q5. Spec 자율성 효과 (HT/E · SEI · P99)
+                        <InfoTooltip text="Anthropic 프레임워크 기반: HT/E(편집당 인간 턴 — 낮을수록 자율적), SEI(Spec 효율성 지수 — 높을수록 효율적), P99(99th percentile 자율 실행 시간 — 길수록 신뢰)" />
                     </h3>
 
                     <div className="grid-3" style={{ gap: 16 }}>
-                        {/* Productivity improvement */}
+                        {/* HT/E: Human Turns per Edit */}
                         <div style={{ background: '#f8f9fa', borderRadius: 16, padding: 20 }}>
                             <div style={{ fontSize: 12, color: '#9aa0a6', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
-                                Q5. 워크플로우 자립도 변화
-                                <InfoTooltip text={`Edit당 사용자 개입 횟수 기준.\nSpec 있음: ${hyp.avg_ht_per_edit_with_spec}회\nSpec 없음: ${hyp.avg_ht_per_edit_without_spec}회\n\n양수(+) = Spec 사용 시 더 자립적 (좋음)\n음수(-) = Spec 없이 더 효율적`} />
+                                HT/E 비교 (편집당 인간 턴)
+                                <InfoTooltip text={`코드 수정 1회당 사용자가 개입한 횟수.\nSpec 있음: ${hyp.hte_with_spec}\nSpec 없음: ${hyp.hte_without_spec}\n\n낮을수록 에이전트가 자율적으로 작업 (양수 = 개선)`} />
                             </div>
                             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                                 <span style={{
                                     fontSize: 28, fontWeight: 700, letterSpacing: '-0.03em',
-                                    color: hyp.normalized_improvement > 0 ? '#1e8e3e' : hyp.normalized_improvement < 0 ? '#d93025' : '#202124'
+                                    color: hyp.hte_improvement > 0 ? '#1e8e3e' : hyp.hte_improvement < 0 ? '#d93025' : '#202124'
                                 }}>
-                                    {hyp.normalized_improvement > 0 ? '+' : ''}{hyp.normalized_improvement}%
+                                    {hyp.hte_improvement > 0 ? '+' : ''}{hyp.hte_improvement}%
                                 </span>
                                 <span style={{
                                     fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 'var(--radius-pill)',
-                                    background: hyp.normalized_improvement > 0 ? '#e6f4ea' : '#fce8e6',
-                                    color: hyp.normalized_improvement > 0 ? '#1e8e3e' : '#d93025'
+                                    background: hyp.hte_improvement > 0 ? '#e6f4ea' : hyp.hte_improvement < 0 ? '#fce8e6' : '#f1f3f4',
+                                    color: hyp.hte_improvement > 0 ? '#1e8e3e' : hyp.hte_improvement < 0 ? '#d93025' : '#9aa0a6'
                                 }}>
-                                    {hyp.normalized_improvement > 0 ? '↑ 효율적' : hyp.normalized_improvement < 0 ? '↓ 비효율' : '동일'}
+                                    {hyp.hte_improvement > 0 ? '↓ 감독 감소' : hyp.hte_improvement < 0 ? '↑ 감독 증가' : '동일'}
                                 </span>
                             </div>
-                            <div style={{ fontSize: 11, color: '#9aa0a6', marginTop: 8 }}>
-                                높을수록 Spec이 생산성에 도움 됨
+                            <div style={{ display: 'flex', gap: 16, marginTop: 10 }}>
+                                <span style={{ fontSize: 11, color: '#1a73e8' }}>Spec: {hyp.hte_with_spec}</span>
+                                <span style={{ fontSize: 11, color: '#9aa0a6' }}>비Spec: {hyp.hte_without_spec}</span>
                             </div>
                         </div>
 
-                        {/* Human turn comparison */}
+                        {/* SEI: Spec Efficiency Index */}
                         <div style={{ background: '#f8f9fa', borderRadius: 16, padding: 20 }}>
-                            <div style={{ fontSize: 12, color: '#9aa0a6', marginBottom: 10, fontWeight: 500 }}>
-                                Q4. Edit당 사용자 개입
+                            <div style={{ fontSize: 12, color: '#9aa0a6', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
+                                SEI 비교 (Spec 효율성 지수)
+                                <InfoTooltip text={`Spec 문서를 에이전트가 얼마나 효율적으로 활용했는지.\nSpec 있음: ${hyp.avg_sei_with_spec}\nSpec 없음: ${hyp.avg_sei_without_spec}\n\nSEI > 25: Elite 워크플로우`} />
                             </div>
                             <div style={{ display: 'flex', gap: 24 }}>
                                 <div>
                                     <div style={{ fontSize: 11, color: '#9aa0a6', marginBottom: 2 }}>Spec 있음</div>
                                     <div style={{ fontSize: 24, fontWeight: 700, color: '#1a73e8', letterSpacing: '-0.03em' }}>
-                                        {hyp.avg_ht_per_edit_with_spec}
+                                        {hyp.avg_sei_with_spec}
                                     </div>
                                 </div>
                                 <div>
                                     <div style={{ fontSize: 11, color: '#9aa0a6', marginBottom: 2 }}>Spec 없음</div>
                                     <div style={{ fontSize: 24, fontWeight: 700, color: '#9aa0a6', letterSpacing: '-0.03em' }}>
-                                        {hyp.avg_ht_per_edit_without_spec}
+                                        {hyp.avg_sei_without_spec}
                                     </div>
                                 </div>
                             </div>
                             <div style={{ fontSize: 11, color: '#9aa0a6', marginTop: 8 }}>
-                                낮을수록 자율적 (적은 개입)
+                                높을수록 Spec 활용 효율적 (≥25 Elite)
                             </div>
                         </div>
 
-                        {/* Session duration */}
+                        {/* P99 Autonomous Duration */}
                         <div style={{ background: '#f8f9fa', borderRadius: 16, padding: 20 }}>
-                            <div style={{ fontSize: 12, color: '#9aa0a6', marginBottom: 10, fontWeight: 500 }}>
-                                평균 세션 시간 (분)
+                            <div style={{ fontSize: 12, color: '#9aa0a6', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
+                                P99 자율 실행 시간 (분)
+                                <InfoTooltip text={`99th percentile 세션 시간 — 가장 오래 자율 실행된 상위 세션.\n평균이 아닌 tail-end 추적이 진정한 자율성 진전을 보여줍니다.\n\nSpec 있음: ${hyp.p99_duration_with_spec}분\nSpec 없음: ${hyp.p99_duration_without_spec}분`} />
                             </div>
                             <div style={{ display: 'flex', gap: 24 }}>
                                 <div>
                                     <div style={{ fontSize: 11, color: '#9aa0a6', marginBottom: 2 }}>Spec 있음</div>
                                     <div style={{ fontSize: 24, fontWeight: 700, color: '#1a73e8', letterSpacing: '-0.03em' }}>
-                                        {hyp.avg_duration_with_spec}
+                                        {hyp.p99_duration_with_spec}
                                     </div>
                                 </div>
                                 <div>
                                     <div style={{ fontSize: 11, color: '#9aa0a6', marginBottom: 2 }}>Spec 없음</div>
                                     <div style={{ fontSize: 24, fontWeight: 700, color: '#9aa0a6', letterSpacing: '-0.03em' }}>
-                                        {hyp.avg_duration_without_spec}
+                                        {hyp.p99_duration_without_spec}
                                     </div>
                                 </div>
                             </div>
@@ -382,8 +385,8 @@ export default function Dashboard() {
                                     onClick={() => navigate(`/session/${session.session_id}?project=${session.project}`)}
                                     style={{ cursor: 'pointer' }}>
                                     <td>{formatDate(session.start_time)}</td>
-                                    <td style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                        {session.project.replace(/-/g, '/').replace(/^\//, '')}
+                                    <td title={session.project.replace(/-/g, '/').replace(/^\//, '')} style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'help' }}>
+                                        {shortenProjectPath(session.project)}
                                     </td>
                                     <td><GradeBadge grade={session.session_grade} /></td>
                                     <td>

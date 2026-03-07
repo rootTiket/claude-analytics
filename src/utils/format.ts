@@ -33,8 +33,18 @@ export function formatTime(dateStr: string): string {
     })
 }
 
-export function shortenPath(path: string): string {
-    const parts = path.split('/')
-    if (parts.length <= 2) return path
-    return parts.slice(-2).join('/')
+export function shortenPath(fullPath: string, maxSegments = 3): string {
+    const parts = fullPath.split('/')
+    if (parts.length <= maxSegments) return fullPath
+    return '…/' + parts.slice(-maxSegments).join('/')
+}
+
+/** Convert hashed project path (e.g. "-Users-igeunpyo-myproject") to last folder name */
+export function shortenProjectPath(projectPath: string): string {
+    // Remove leading dash, convert dashes to slashes
+    const decoded = projectPath.replace(/^-/, '').replace(/-/g, '/')
+    const parts = decoded.split('/').filter(Boolean)
+    if (parts.length === 0) return projectPath
+    // Return last meaningful segment (skip common prefixes like Users/username)
+    return parts[parts.length - 1] || projectPath
 }

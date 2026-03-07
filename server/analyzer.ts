@@ -8,6 +8,27 @@ import type {
 } from './types.js';
 import { parseJsonlFile, getProjectsList } from './parser.js';
 
+// ── Model cost multiplier (Sonnet = 1.0 baseline) ──
+const MODEL_COST_MULTIPLIER: Record<string, number> = {
+    haiku: 0.25,
+    sonnet: 1.0,
+    opus: 5.0,
+};
+
+function getModelCostMultiplier(modelName: string): number {
+    const lower = modelName.toLowerCase();
+    for (const [key, value] of Object.entries(MODEL_COST_MULTIPLIER)) {
+        if (lower.includes(key)) return value;
+    }
+    return 1.0; // default to sonnet
+}
+
+function extractModelName(record: Message): string | null {
+    const model = record.message?.model;
+    if (model && typeof model === 'string') return model;
+    return null;
+}
+
 // ── Helper: compute efficiency score ──
 function computeEfficiencyScore(
     cacheHitRate: number,
@@ -17,7 +38,8 @@ function computeEfficiencyScore(
     readEditRatio: number,
     repeatedEditRate: number,
     sessionExit: 'clean' | 'forced' | 'unknown',
-    tokensPerEdit: number
+    tokensPerEdit: number,
+    modelName: string = 'sonnet'
 ): number {
     let score = 0;
 
@@ -35,10 +57,11 @@ function computeEfficiencyScore(
     // 4. Session termination (10 pts)
     score += sessionExit === 'clean' ? 10 : sessionExit === 'unknown' ? 5 : 0;
 
-    // 5. Cost efficiency (15 pts)
-    score += tokensPerEdit > 0 && tokensPerEdit < 30000 ? 15
-        : tokensPerEdit < 50000 ? 10
-            : tokensPerEdit < 80000 ? 5 : 0;
+    // 5. Cost efficiency (15 pts) — normalized by model cost multiplier
+    const costPerEdit = tokensPerEdit * getModelCostMultiplier(modelName);
+    score += costPerEdit > 0 && costPerEdit < 30000 ? 15
+        : costPerEdit < 50000 ? 10
+            : costPerEdit < 80000 ? 5 : 0;
 
     // 6. Error penalty
     score = Math.max(0, score - (toolErrorCount * 5));
@@ -99,10 +122,11 @@ function computeGrade(
 }
 
 // ── Helper: compute danger level ──
-function getDangerLevel(avgContextSize: number): 'optimal' | 'safe' | 'caution' | 'critical' {
-    if (avgContextSize < 10000) return 'optimal';
-    if (avgContextSize < 20000) return 'safe';
-    if (avgContextSize > 50000) return 'critical';
+function getDangerLevel(avgContextSize: number, modelName: string = 'sonnet'): 'optimal' | 'safe' | 'caution' | 'critical' {
+    const normalizedCost = avgContextSize * getModelCostMultiplier(modelName);
+    if (normalizedCost < 10000) return 'optimal';
+    if (normalizedCost < 20000) return 'safe';
+    if (normalizedCost > 50000) return 'critical';
     return 'caution';
 }
 
@@ -170,31 +194,38 @@ export function getSessionsList(
             let recordIndex = 0;
             let toolResultCount = 0, toolErrorCount = 0;
             let humanTurns = 0, autoTurns = 0, commandTurns = 0;
+            let sessionModel = 'sonnet';
 
             for (const record of records) {
-                if (record.type === 'assistant' && record.message?.usage) {
-                    const usage = record.message.usage;
-                    inputTokens += usage.input_tokens || 0;
-                    // outputTokens += usage.output_tokens || 0;
-                    cacheRead += usage.cache_read_input_tokens || 0;
-                    requests++;
+                if (record.type === 'assistant') {
+                    // Extract model name from first assistant message
+                    const model = extractModelName(record);
+                    if (model && sessionModel === 'sonnet') sessionModel = model;
 
-                    if (record.message?.content && Array.isArray(record.message.content)) {
-                        for (const block of record.message.content) {
-                            if (block.type === 'tool_use') {
-                                const toolName = block.name?.toLowerCase() || '';
-                                if (toolName.includes('read') || toolName.includes('view') || toolName.includes('grep') || toolName.includes('glob') || toolName.includes('list')) {
-                                    readCount++;
-                                    const input = (block.input as Record<string, unknown>) || {};
-                                    const fp = (input.file_path as string) || (input.path as string) || '';
-                                    if (firstSpecReadIndex === -1 && (fp.includes('.claude/') || fp.includes('CLAUDE.md'))) {
-                                        firstSpecReadIndex = recordIndex;
+                    if (record.message?.usage) {
+                        const usage = record.message.usage;
+                        inputTokens += usage.input_tokens || 0;
+                        // outputTokens += usage.output_tokens || 0;
+                        cacheRead += usage.cache_read_input_tokens || 0;
+                        requests++;
+
+                        if (record.message?.content && Array.isArray(record.message.content)) {
+                            for (const block of record.message.content) {
+                                if (block.type === 'tool_use') {
+                                    const toolName = block.name?.toLowerCase() || '';
+                                    if (toolName.includes('read') || toolName.includes('view') || toolName.includes('grep') || toolName.includes('glob') || toolName.includes('list')) {
+                                        readCount++;
+                                        const input = (block.input as Record<string, unknown>) || {};
+                                        const fp = (input.file_path as string) || (input.path as string) || '';
+                                        if (firstSpecReadIndex === -1 && (fp.includes('.claude/') || fp.includes('CLAUDE.md'))) {
+                                            firstSpecReadIndex = recordIndex;
+                                        }
+                                    } else if (toolName.includes('edit') || toolName.includes('write') || toolName.includes('replace')) {
+                                        editCount++;
+                                        const input = block.input as Record<string, unknown> | undefined;
+                                        const filePath = (input?.file_path as string) || (input?.filePath as string);
+                                        if (filePath) filesEdited.push(filePath);
                                     }
-                                } else if (toolName.includes('edit') || toolName.includes('write') || toolName.includes('replace')) {
-                                    editCount++;
-                                    const input = block.input as Record<string, unknown> | undefined;
-                                    const filePath = (input?.file_path as string) || (input?.filePath as string);
-                                    if (filePath) filesEdited.push(filePath);
                                 }
                             }
                         }
@@ -266,8 +297,7 @@ export function getSessionsList(
 
             const totalContextSent = inputTokens + cacheRead;
             const avgContextSize = requests > 0 ? Math.round(totalContextSent / requests) : 0;
-            const dangerLevel = getDangerLevel(avgContextSize);
-            const limitImpact = Math.round((totalContextSent / 44000) * 100);
+            const dangerLevel = getDangerLevel(avgContextSize, sessionModel);
 
             const uniqueFilesRead = new Set(filesReadList).size;
             const duplicateReads = filesReadList.length - uniqueFilesRead;
@@ -283,7 +313,7 @@ export function getSessionsList(
             const efficiencyScore = computeEfficiencyScore(
                 cacheHitRate, toolErrorRate, toolErrorCount,
                 duplicateReadRate, readEditRatio, repeatedEditRate,
-                sessionExit, tokensPerEdit
+                sessionExit, tokensPerEdit, sessionModel
             );
 
             const sei = computeSEI(postSpecReadTotal, postSpecReadErrors, cacheRead, new Set(specFilesRead).size);
@@ -314,7 +344,6 @@ export function getSessionsList(
                     cache_hit_rate: Math.round(cacheHitRate * 10) / 10,
                     spec_trigger_rate: specTriggerRate,
                     danger_level: dangerLevel,
-                    limit_impact: limitImpact,
                 },
                 tool_efficiency: {
                     read_edit_ratio: readEditRatio,
@@ -332,10 +361,8 @@ export function getSessionsList(
                     human_turns: humanTurns,
                     auto_turns: effectiveAutoTurns,
                     autonomy_rate: autonomyRate,
-                    ht_per_edit: editCount > 0 ? Math.round((humanTurns / editCount) * 10) / 10 : 0,
                 },
                 workflow_autonomy: {
-                    repeated_edit_rate: repeatedEditRate,
                     efficiency_score: efficiencyScore,
                     sei,
                 },
@@ -348,15 +375,14 @@ export function getSessionsList(
             sessions.push({
                 session_id: file.replace('.jsonl', ''),
                 project: project.name,
+                model: sessionModel,
                 start_time: startTs,
                 end_time: endTs,
                 git_branch: firstTimestampRecord?.gitBranch || '',
                 total_requests: requests,
                 avg_context_size: avgContextSize,
                 danger_level: dangerLevel,
-                limit_impact: limitImpact,
                 total_context_tokens: totalContextSent,
-                total_output_tokens: 0,
                 duplicate_read_rate: duplicateReadRate,
                 read_edit_ratio: readEditRatio,
                 repeated_edit_rate: repeatedEditRate,
@@ -371,7 +397,7 @@ export function getSessionsList(
                 human_turns: humanTurns,
                 auto_turns: effectiveAutoTurns,
                 command_turns: commandTurns,
-                human_turns_per_edit: editCount > 0 ? Math.round((humanTurns / editCount) * 10) / 10 : 0,
+                edit_count: editCount,
                 spec_efficiency: sei,
                 grade_breakdown: grade.breakdown,
                 anthropic_metrics: anthropicMetrics,
@@ -435,6 +461,7 @@ export function getSessionDetail(
     let firstSpecReadIndex = -1;
     let postSpecReadTotal = 0, postSpecReadErrors = 0;
     let recordIndex = 0;
+    let sessionModel = 'sonnet';
 
     const toolIdMap = new Map<string, string>();
     const errorMap = new Map<string, { tool: string; error: string; count: number }>();
@@ -444,6 +471,9 @@ export function getSessionDetail(
     // Track which files were read by the assistant via tool_use
     // so we can deduplicate them from user's "context load" display
     let lastAssistantReadFiles: Set<string> = new Set();
+
+    // ── Skill tracking: detect slash commands and associate subsequent work ──
+    let activeSkill: string | null = null;
 
     let messageId = 0;
 
@@ -468,12 +498,16 @@ export function getSessionDetail(
                     const cmdArgs = argsMatch ? argsMatch[1].trim() : '';
                     content = cmdArgs ? `${cmdName} ${cmdArgs}` : cmdName;
                     messageSubtype = 'command';
+                    // Set active skill from slash command
+                    activeSkill = cmdMatch ? cmdMatch[1].replace(/^\//, '') : null;
                 } else if (raw.startsWith('This session is being continued')) {
                     content = '(세션 이어하기 — 이전 대화 요약 자동 삽입)';
                     messageSubtype = 'continuation';
                 } else {
                     content = raw;
                     messageSubtype = 'human';
+                    // User typed a message → reset active skill
+                    activeSkill = null;
                 }
             } else if (Array.isArray(msgContent)) {
                 for (const block of msgContent) {
@@ -559,10 +593,15 @@ export function getSessionDetail(
                     timestamp: record.timestamp || '',
                     content,
                     files_read: fileList,
-                    tool_uses: toolUses
+                    tool_uses: toolUses,
+                    skill_name: messageSubtype === 'command' ? activeSkill || undefined : undefined,
                 });
             }
         } else if (record.type === 'assistant') {
+            // Extract model name from first assistant message
+            const model = extractModelName(record);
+            if (model && sessionModel === 'sonnet') sessionModel = model;
+
             const usage = record.message?.usage;
             const content: string[] = [];
             const toolUses: ToolUseDetail[] = [];
@@ -585,6 +624,7 @@ export function getSessionDetail(
                         const nameLower = toolName.toLowerCase();
                         if (nameLower === 'read' || nameLower === 'view') {
                             const fp = (input.file_path as string) || (input.filePath as string) || '';
+                            const isSpec = fp.includes('.claude/') || fp.includes('CLAUDE.md');
                             if (fp) {
                                 detail = fp;
                                 // Track that this file was read by assistant tool
@@ -605,14 +645,20 @@ export function getSessionDetail(
                                     firstSpecReadIndex = recordIndex;
                                 }
                             }
+                            toolUses.push({ name: toolName, detail: detail || undefined, category: isSpec ? 'read_spec' : 'read_code' });
+                            continue;
                         } else if (nameLower === 'edit' || nameLower === 'replace') {
                             detail = (input.file_path as string) || (input.filePath as string) || '';
                             editCount++;
                             if (detail) filesEdited.push(detail);
+                            toolUses.push({ name: toolName, detail: detail || undefined, category: 'edit' });
+                            continue;
                         } else if (nameLower === 'write') {
                             detail = (input.file_path as string) || (input.filePath as string) || '';
                             editCount++;
                             if (detail) filesEdited.push(detail);
+                            toolUses.push({ name: toolName, detail: detail || undefined, category: 'edit' });
+                            continue;
                         } else if (nameLower === 'bash') {
                             detail = (input.command as string) || '';
                         } else if (nameLower === 'grep') {
@@ -669,7 +715,15 @@ export function getSessionDetail(
                             }
                         }
 
-                        toolUses.push({ name: toolName, detail: detail || undefined });
+                        toolUses.push({
+                            name: toolName, detail: detail || undefined,
+                            category: nameLower.includes('read') || nameLower.includes('view') || nameLower.includes('list')
+                                ? (detail && (detail.includes('.claude/') || detail.includes('CLAUDE.md')) ? 'read_spec' : 'read_code')
+                                : nameLower.includes('grep') || nameLower.includes('glob') || nameLower.includes('search')
+                                    ? 'search'
+                                    : nameLower.includes('edit') || nameLower.includes('write') || nameLower.includes('replace')
+                                        ? 'edit' : 'other'
+                        });
                     }
                 }
             }
@@ -688,7 +742,8 @@ export function getSessionDetail(
                 content: content.join('\n'),
                 usage,
                 files_read: [],
-                tool_uses: toolUses
+                tool_uses: toolUses,
+                skill_name: activeSkill || undefined,
             });
         }
 
@@ -707,8 +762,7 @@ export function getSessionDetail(
 
     const totalContextSent = inputTokens + cacheRead;
     const avgContextSize = requests > 0 ? Math.round(totalContextSent / requests) : 0;
-    const dangerLevel = getDangerLevel(avgContextSize);
-    const limitImpact = Math.round((totalContextSent / 44000) * 100);
+    const dangerLevel = getDangerLevel(avgContextSize, sessionModel);
 
     const readEditRatio = editCount > 0 ? Math.round((readCount / editCount) * 10) / 10 : readCount;
     const uniqueFilesRead = new Set(allReadFiles).size;
@@ -734,7 +788,7 @@ export function getSessionDetail(
     const efficiencyScore = computeEfficiencyScore(
         cacheHitRate, toolErrorRate, toolErrorCount,
         duplicateReadRate, readEditRatio, repeatedEditRate,
-        sessionExit, tokensPerEdit
+        sessionExit, tokensPerEdit, sessionModel
     );
 
     const specFilesReadList = allReadFiles.filter(f => f.includes('.claude/') || f.includes('CLAUDE.md'));
@@ -744,6 +798,7 @@ export function getSessionDetail(
     return {
         session_id: sessionId,
         project: foundProject,
+        model: sessionModel,
         start_time: (firstRecord as Message).timestamp || '',
         end_time: (lastRecord as Message).timestamp || '',
         git_branch: (firstRecord as Message)?.gitBranch || '',
@@ -752,7 +807,6 @@ export function getSessionDetail(
             total_requests: requests,
             avg_context_size: avgContextSize,
             danger_level: dangerLevel,
-            limit_impact: limitImpact,
             total_context_tokens: totalContextSent,
             files_read: [...new Set(filesRead)],
             spec_files_read: [...new Set(specFilesRead)]
@@ -778,7 +832,10 @@ export function getSessionDetail(
                     + (readEditRatio >= 5 && readEditRatio <= 20 ? 10 : readEditRatio >= 3 ? 5 : 0)
                     + (repeatedEditRate < 10 ? 5 : repeatedEditRate < 20 ? 3 : 0),
                 termination: sessionExit === 'clean' ? 10 : sessionExit === 'unknown' ? 5 : 0,
-                cost_efficiency: tokensPerEdit > 0 && tokensPerEdit < 30000 ? 15 : tokensPerEdit < 50000 ? 10 : tokensPerEdit < 80000 ? 5 : 0
+                cost_efficiency: (() => {
+                    const costPerEdit = tokensPerEdit * getModelCostMultiplier(sessionModel);
+                    return costPerEdit > 0 && costPerEdit < 30000 ? 15 : costPerEdit < 50000 ? 10 : costPerEdit < 80000 ? 5 : 0;
+                })()
             },
             spec_efficiency: sei,
             grade_breakdown: grade.breakdown
@@ -798,7 +855,6 @@ export function getSessionDetail(
                     cache_hit_rate: Math.round(cacheHitRate * 10) / 10,
                     spec_trigger_rate: specTriggerRate,
                     danger_level: dangerLevel,
-                    limit_impact: limitImpact,
                 },
                 tool_efficiency: {
                     read_edit_ratio: readEditRatio,
@@ -817,10 +873,8 @@ export function getSessionDetail(
                     human_turns: humanTurns,
                     auto_turns: autoTurns,
                     autonomy_rate: autonomyRate,
-                    ht_per_edit: editCount > 0 ? Math.round((humanTurns / editCount) * 10) / 10 : 0,
                 },
                 workflow_autonomy: {
-                    repeated_edit_rate: repeatedEditRate,
                     efficiency_score: Math.round(efficiencyScore),
                     sei,
                 },
@@ -845,7 +899,7 @@ export function getAnalytics(
     const sessions = getSessionsList(projectsDir, projectPath, startDate, endDate);
     const projects = getProjectsList(projectsDir);
 
-    let totalInput = 0, totalOutput = 0, totalCacheRead = 0;
+    let totalInput = 0, totalCacheRead = 0;
 
     const projectsToScan = getProjectsToScan(projectsDir, projectPath);
 
@@ -861,7 +915,6 @@ export function getAnalytics(
                 if (record.type === 'assistant' && record.message?.usage) {
                     const usage = record.message.usage;
                     totalInput += usage.input_tokens || 0;
-                    totalOutput += usage.output_tokens || 0;
                     totalCacheRead += usage.cache_read_input_tokens || 0;
                 }
             }
@@ -872,39 +925,47 @@ export function getAnalytics(
     const totalRequests = sessions.reduce((sum, s) => sum + s.total_requests, 0);
     const avgContextSize = totalRequests > 0 ? Math.round(totalContextSent / totalRequests) : 0;
     const dangerLevel = getDangerLevel(avgContextSize);
-    const limitImpact = Math.round((totalContextSent / 44000) * 100);
 
     const avgEfficiency = sessions.length > 0 ? Math.round(sessions.reduce((sum, s) => sum + s.efficiency_score, 0) / sessions.length) : 0;
     const avgToolErrorRate = sessions.length > 0 ? Math.round(sessions.reduce((sum, s) => sum + s.tool_error_rate, 0) / sessions.length * 10) / 10 : 0;
 
-    // Hypothesis Check
+    // Hypothesis Check — Anthropic-aligned metrics (HT/E, SEI, P99)
     const withSpec = sessions.filter(s => s.has_spec_context && s.total_requests > 0);
     const withoutSpec = sessions.filter(s => !s.has_spec_context && s.total_requests > 0);
 
-    const avg = (arr: SessionSummary[], fn: (s: SessionSummary) => number) =>
-        arr.length > 0 ? Math.round(arr.reduce((sum, s) => sum + fn(s), 0) / arr.length * 10) / 10 : 0;
+    // HT/E: Human Turns per Edit (lower = more autonomous)
+    const computeAvgHTE = (arr: SessionSummary[]) => {
+        const valid = arr.filter(s => s.edit_count > 0);
+        if (valid.length === 0) return 0;
+        return Math.round(valid.reduce((sum, s) => sum + (s.human_turns / s.edit_count), 0) / valid.length * 100) / 100;
+    };
+    const hteWithSpec = computeAvgHTE(withSpec);
+    const hteWithoutSpec = computeAvgHTE(withoutSpec);
+    const hteImprovement = hteWithoutSpec > 0
+        ? Math.round((1 - hteWithSpec / hteWithoutSpec) * 1000) / 10 : 0;
 
-    const avgHumanTurnsWithSpec = avg(withSpec, s => s.human_turns);
-    const avgHumanTurnsWithoutSpec = avg(withoutSpec, s => s.human_turns);
-    const humanTurnImprovement = avgHumanTurnsWithoutSpec > 0
-        ? Math.round((1 - avgHumanTurnsWithSpec / avgHumanTurnsWithoutSpec) * 1000) / 10 : 0;
+    // SEI: Spec Efficiency Index comparison
+    const computeAvgSEI = (arr: SessionSummary[]) => {
+        const valid = arr.filter(s => s.spec_efficiency && s.spec_efficiency.sei_score > 0);
+        if (valid.length === 0) return 0;
+        return Math.round(valid.reduce((sum, s) => sum + (s.spec_efficiency?.sei_score || 0), 0) / valid.length * 10) / 10;
+    };
 
-    const specWithEdits = withSpec.filter(s => s.human_turns_per_edit > 0);
-    const noSpecWithEdits = withoutSpec.filter(s => s.human_turns_per_edit > 0);
-    const avgHtPerEditWithSpec = avg(specWithEdits, s => s.human_turns_per_edit);
-    const avgHtPerEditWithoutSpec = avg(noSpecWithEdits, s => s.human_turns_per_edit);
-    const normalizedImprovement = avgHtPerEditWithoutSpec > 0
-        ? Math.round((1 - avgHtPerEditWithSpec / avgHtPerEditWithoutSpec) * 1000) / 10 : 0;
+    // P99 duration: 99th percentile tail-end (minutes)
+    const computeP99Duration = (arr: SessionSummary[]) => {
+        if (arr.length === 0) return 0;
+        const sorted = [...arr].map(s => s.duration_minutes).sort((a, b) => a - b);
+        const idx = Math.min(Math.floor(sorted.length * 0.99), sorted.length - 1);
+        return sorted[idx];
+    };
 
     return {
         summary: {
             total_sessions: sessions.length,
             total_projects: projects.length,
             total_context_tokens: totalContextSent,
-            total_output_tokens: totalOutput,
             avg_context_size: avgContextSize,
             danger_level: dangerLevel,
-            limit_impact: limitImpact,
             optimal_sessions: sessions.filter(s => s.danger_level === 'optimal').length,
             safe_sessions: sessions.filter(s => s.danger_level === 'safe').length,
             caution_sessions: sessions.filter(s => s.danger_level === 'caution').length,
@@ -918,16 +979,13 @@ export function getAnalytics(
             clean_exits: sessions.filter(s => s.session_exit === 'clean').length,
             forced_exits: sessions.filter(s => s.session_exit === 'forced').length,
             hypothesis_check: {
-                avg_turns_with_spec: avg(withSpec, s => s.total_requests),
-                avg_turns_without_spec: avg(withoutSpec, s => s.total_requests),
-                avg_human_turns_with_spec: avgHumanTurnsWithSpec,
-                avg_human_turns_without_spec: avgHumanTurnsWithoutSpec,
-                human_turn_improvement: humanTurnImprovement,
-                avg_ht_per_edit_with_spec: avgHtPerEditWithSpec,
-                avg_ht_per_edit_without_spec: avgHtPerEditWithoutSpec,
-                normalized_improvement: normalizedImprovement,
-                avg_duration_with_spec: avg(withSpec, s => s.duration_minutes),
-                avg_duration_without_spec: avg(withoutSpec, s => s.duration_minutes),
+                hte_with_spec: hteWithSpec,
+                hte_without_spec: hteWithoutSpec,
+                hte_improvement: hteImprovement,
+                avg_sei_with_spec: computeAvgSEI(withSpec),
+                avg_sei_without_spec: computeAvgSEI(withoutSpec),
+                p99_duration_with_spec: computeP99Duration(withSpec),
+                p99_duration_without_spec: computeP99Duration(withoutSpec),
                 sessions_with_spec: withSpec.length,
                 sessions_without_spec: withoutSpec.length
             },
@@ -941,8 +999,6 @@ export function getAnalytics(
                 total_tool_errors: sessions.reduce((sum, s) => sum + s.anthropic_metrics.api_reliability.tool_error_count, 0),
                 avg_autonomy_rate: sessions.length > 0
                     ? Math.round(sessions.reduce((sum, s) => sum + s.anthropic_metrics.user_intervention.autonomy_rate, 0) / sessions.length * 10) / 10 : 0,
-                avg_ht_per_edit: sessions.length > 0
-                    ? Math.round(sessions.reduce((sum, s) => sum + s.anthropic_metrics.user_intervention.ht_per_edit, 0) / sessions.length * 10) / 10 : 0,
                 workflow_completion_rate: sessions.length > 0
                     ? Math.round(sessions.filter(s => s.anthropic_metrics.workflow_autonomy.efficiency_score >= 60).length / sessions.length * 1000) / 10 : 0,
                 grade_consistency: sessions.length > 0

@@ -112,16 +112,18 @@ app.post('/api/refresh', (req, res) => {
 // ════════════════════════════════════════════════════════════
 
 const distPath = path.resolve(__dirname, '../client');
-const indexHtmlPath = path.join(distPath, 'index.html');
-if (fs.existsSync(distPath)) {
-    app.use(express.static(distPath));
+const distPathAlt = path.resolve(process.cwd(), 'dist/client');
+const resolvedDistPath = fs.existsSync(distPath) ? distPath : distPathAlt;
+const indexHtmlPath = path.join(resolvedDistPath, 'index.html');
+if (fs.existsSync(resolvedDistPath)) {
+    app.use(express.static(resolvedDistPath));
     app.use((req, res, next) => {
         if (req.path.startsWith('/api')) return next();
         res.sendFile(indexHtmlPath);
     });
-    console.log(`📦 Serving frontend from: ${distPath}`);
+    console.log(`📦 Serving frontend from: ${resolvedDistPath}`);
 } else {
-    console.log(`⚠️  Frontend not found at: ${distPath}`);
+    console.log(`⚠️  Frontend not found at: ${resolvedDistPath}`);
     console.log(`   Run in dev mode: npm run dev`);
 }
 
