@@ -665,6 +665,8 @@ export function getSessionDetail(
                             detail = `${(input.pattern as string) || ''} in ${(input.path as string) || ''}`;
                         } else if (nameLower === 'glob') {
                             detail = `${(input.pattern as string) || ''} in ${(input.path as string) || ''}`;
+                        } else if (nameLower === 'skill') {
+                            detail = (input.skill as string) || '';
                         } else if (nameLower === 'task') {
                             detail = (input.description as string) || '';
                         } else if (nameLower === 'taskcreate') {
@@ -813,11 +815,19 @@ export function getSessionDetail(
             skills_loaded: (() => {
                 const skills: { name: string; type: 'command' | 'spec_file'; path?: string }[] = [];
                 const seen = new Set<string>();
-                // Collect slash commands used
+                // Collect slash commands used and AI-invoked skills
                 for (const msg of messages) {
                     if (msg.skill_name && !seen.has(`cmd:${msg.skill_name}`)) {
                         seen.add(`cmd:${msg.skill_name}`);
                         skills.push({ name: msg.skill_name, type: 'command' });
+                    }
+                    for (const tu of msg.tool_uses) {
+                        if (tu.name.toLowerCase() === 'skill' && tu.detail) {
+                            if (!seen.has(`cmd:${tu.detail}`)) {
+                                seen.add(`cmd:${tu.detail}`);
+                                skills.push({ name: tu.detail, type: 'command' });
+                            }
+                        }
                     }
                 }
                 // Collect .claude/ spec files read (commands, settings, etc.)
