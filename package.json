@@ -1,6 +1,6 @@
 {
   "name": "claude-cli-analytics",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Claude CLI Analytics Dashboard - Efficiency insights for Claude Pro users",
   "keywords": [
     "claude",
