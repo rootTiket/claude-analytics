@@ -250,6 +250,36 @@ export default function SessionDetail() {
                 </div>
             )}
 
+            {/* ── Skills Loaded ── */}
+            {session.summary.skills_loaded && session.summary.skills_loaded.length > 0 && (
+                <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+                    <h3 style={{ fontSize: 15, fontWeight: 600, color: '#202124', margin: '0 0 16px', letterSpacing: '-0.01em', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        ⚡ 로드된 스킬 ({session.summary.skills_loaded.length})
+                    </h3>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                        {session.summary.skills_loaded.map((skill, i) => (
+                            <span key={i} title={skill.path || `/${skill.name} 커맨드`} style={{
+                                fontSize: 12, padding: '6px 14px', borderRadius: 'var(--radius-pill)',
+                                background: skill.type === 'command' ? '#fef3c7' : '#e8f0fe',
+                                color: skill.type === 'command' ? '#92400e' : '#1a73e8',
+                                fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5,
+                                cursor: 'help',
+                            }}>
+                                <span style={{ fontSize: 13 }}>
+                                    {skill.type === 'command'
+                                        ? (SKILL_ICONS[skill.name] || SKILL_ICONS.default)
+                                        : '📄'}
+                                </span>
+                                {skill.type === 'command' ? `/${skill.name}` : skill.name}
+                                {skill.type === 'spec_file' && (
+                                    <span style={{ fontSize: 10, opacity: 0.6, fontWeight: 400 }}>.claude</span>
+                                )}
+                            </span>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* ── Files Read ── */}
             {session.summary.files_read.length > 0 && (
                 <div className="card" style={{ padding: 24, marginBottom: 24 }}>

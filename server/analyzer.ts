@@ -809,7 +809,36 @@ export function getSessionDetail(
             danger_level: dangerLevel,
             total_context_tokens: totalContextSent,
             files_read: [...new Set(filesRead)],
-            spec_files_read: [...new Set(specFilesRead)]
+            spec_files_read: [...new Set(specFilesRead)],
+            skills_loaded: (() => {
+                const skills: { name: string; type: 'command' | 'spec_file'; path?: string }[] = [];
+                const seen = new Set<string>();
+                // Collect slash commands used
+                for (const msg of messages) {
+                    if (msg.skill_name && !seen.has(`cmd:${msg.skill_name}`)) {
+                        seen.add(`cmd:${msg.skill_name}`);
+                        skills.push({ name: msg.skill_name, type: 'command' });
+                    }
+                }
+                // Collect .claude/ spec files read (commands, settings, etc.)
+                for (const msg of messages) {
+                    for (const tu of msg.tool_uses) {
+                        if (tu.category === 'read_spec' && tu.detail) {
+                            const p = tu.detail;
+                            if (!seen.has(`file:${p}`)) {
+                                seen.add(`file:${p}`);
+                                // Extract a friendly name from the path
+                                const match = p.match(/\.claude\/commands\/([^/]+?)(?:\.\w+)?$/) ||
+                                    p.match(/\.claude\/([^/]+?)(?:\.\w+)?$/) ||
+                                    p.match(/([^/]+?)(?:\.\w+)?$/);
+                                const name = match ? match[1] : p;
+                                skills.push({ name, type: 'spec_file', path: p });
+                            }
+                        }
+                    }
+                }
+                return skills;
+            })()
         },
         quality: {
             read_count: readCount,

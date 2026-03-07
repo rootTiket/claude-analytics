@@ -170,6 +170,7 @@ export interface SessionDetailData {
         total_context_tokens: number
         files_read: string[]
         spec_files_read: string[]
+        skills_loaded?: { name: string; type: 'command' | 'spec_file'; path?: string }[]
     }
     quality?: {
         read_count: number
